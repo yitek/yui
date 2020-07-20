@@ -1,0 +1,113 @@
+=人机交互=
+
+=计算机交互交互=
+输出output = 计算compute(输入input)
+ci = F(输入,输出,计算)
+
+=人机交互交互=
+ui = F(输入,输出,计算)
+输入:事件event
+输出:视界view
+UI = {event}-ui->{view}
+ui是事件到视界的映射
+
+=OO以对象为(思考的)起源(Object Orign)=
+programmer is the world's creator.
+class = 概念 = [{方法method},{属性property}] 分析得到
+object = 某个概念对应的实体 =由class创建class.create() 程序运行得到
+interface = 接口 = 抽象概念 ,可以有多个概念与之对应，该这群概念都有相同的特征。implements实现
+extends 继承
+type = 是什么 is a 
+congression =组合 has a/many 复杂对象的分治策略
+partten = 模式
+composite模式  同构组合 parent/children 它本身与它的构成部分有相似特征
+
+=输入与事件=
+发生某件事情，让其他对象知道该事情的发生，叫做产生了一个事件。
+事件的产生: 输入设备，对象的变化(视界，数据对象等)，定时器
+事件的处理与对象方法:方法调用 obj.notify(msg);给对象发送消息
+观察者模式
+interface IInput{
+    attech(event,obj,handler);
+    detech(event,obj,handler);
+    notify(message);
+}
+观察者模式的悬垂引用讨论
+
+=视界与帧=
+视界具有组件特征,视界可以作为输入
+通常很复杂，可以由不同部分构成。
+frame帧，某个时刻的样子，输出设备接收 = view视界.render呈现(states状态);
+frame = view(states)
+
+
+=编程者角度的视界=
+interface IView {
+    //视界可以由子视界组装而成
+    children:IView[];
+    parent:IView;
+    //视界可以将状态呈现出来，形成帧
+    //可以理解成视界的创建
+    render(states):IFrame;
+    //可以修改视界状态来形成新的帧
+    setState(value,immediately?);
+    //也可以获取到视界的状态
+    getState():value;
+    //通常不直接刷新设备，而是等所有状态更新完成后统一刷新设备。
+    refresh(states?):IFrame;
+    //当状态变化时，可以通知其他观察者对象
+    attech(eventName,IObserver);
+}
+let myView = new View();
+//捕捉视界上的输入(输入事件)，输入产生后(触发事件)，给关注该视界的该事件的对象发送通知。
+myView.attech('click',obj,obj.handleViewClick);
+OUTPUT(myView.render(states));
+myView.x = 10;
+OUTPUT(myView.refresh({y:10}));
+
+=逻辑模型model=
+模式中的视图是本文的IFrame+呈现设备(或机制)。本文的IView是控制器.
+通常只关注视界的一部分属性,并且这部分属性在当前逻辑上也有不同的名称与位置。
+
+没有绑定机制的典型代码为(编程者视角)
+let model = {title:'修改后的标题'};
+let view = new View();
+view.render({text:model.title});
+view.text = '修改后的标题';
+view.refresh();
+model.title = view.text;
+以编程者角度来看，直接操作视界对象逻辑并不顺畅，且工作繁重。
+编程者更希望关注业务逻辑，操作业务模型，当业务模型变化后，其对应的视图帧就会相应变化。
+绑定机制的典型代码为(编程者视角)
+let article = {title:"xxx"};
+//创建视界。该视界会绑定一个模型，绑定规则为model=>{text:model.title}
+let view = new View(model=>{text:model.title});
+// 输出第一帧
+OUTPUT(view.render(article));产生第一帧。
+// 业务逻辑，修改模型
+article.title = '修改后的标题';
+// 用业务模型刷新视界，并输出新的帧
+OUTPUT(view.refresh(article)); //该步骤可由ui框架自动完成
+// 在必要的时候，可以将视界中的状态更新到模型中
+view.update(article);
+
+这里就有 model <--> states的双向绑定。states变化，会导致model变化；同样model变化也会导致states变化。
+
+=双向绑定的实现=
+1 构建模型的架构信息schema。即模型都有那些属性，该属性的类型。它的下级属性。及访问路径。
+2 框架会将render函数封装，形成一个新的render函数,传入编程者的render函数的其实不是model本身，而是schema
+关键在于构造函数中的lamda表达式。
+构造函数会创建一个visitor将该visitor传入该lamda中。在有proxy的语言环境，visitor是一个proxy。如果没有proxy，框架通过不断试错来创建schema
+
+
+
+
+
+
+
+
+
+
+
+
+
