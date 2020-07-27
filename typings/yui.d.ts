@@ -26,6 +26,20 @@ export declare function array_contains(obj: any, item: any): boolean;
 export declare function array_add_unique(arr: any[], item: any): boolean;
 export declare function array_remove(arr: any[], item: any): boolean;
 export declare let extend: (...args: any[]) => any;
+export declare function accessable(desc: any, target?: any, name?: any, value?: any): any;
+/**
+ * 将成员变成隐式成员
+ * 不会被for循环到
+ * 但外部还是可以修改
+ *
+ * @export
+ * @param {*} [target]
+ * @param {*} [name]
+ * @param {*} [value]
+ * @returns
+ */
+export declare function implicit(target?: any, name?: any, value?: any): any;
+export declare function constant(enumerable?: boolean, target?: any, name?: any, value?: any): any;
 export declare enum FulfillStates {
     padding = 0,
     fulfilled = 1,
@@ -40,7 +54,7 @@ export interface IDisposable {
 }
 export declare function disposable(obj: any): IDisposable;
 export declare class Subect {
-    "$-subject-topics": {
+    '$-subject-topics': {
         [topic: string]: {
             (...args: any[]): any;
         }[];
@@ -56,7 +70,6 @@ export declare class Subect {
         (evt: any): any;
     }): Subect;
     notify(topic: any, evt?: any, ...evts: any[]): Subect;
-    static mixin(target: any): any;
 }
 export declare enum SchemaTypes {
     value = 0,
@@ -65,19 +78,33 @@ export declare enum SchemaTypes {
 }
 export declare class Schema {
     $schemaName: string;
-    $schemaNames: string[];
-    $schemaItemNames: string[];
-    $ownSchema: Schema;
+    private '$-schema-root';
+    private '$-schema-name-paths-from-root';
+    /**
+     * 在作用域上的名字
+     * 如果为空，表示不是作用域变量
+     * 如果该字段有值，表示该Schema的变量将会从scope上面去取
+     *
+     * @type {string}
+     * @memberof Schema
+     */
+    $schemaScopedName?: string;
+    private '$-schema-scoped';
+    private '$-schema-name-paths-from-scoped';
+    $schemaOwn: Schema;
     $schemaDefaultValue: any;
-    $arrayItemSchema: Schema;
+    $schemaArrayItem: Schema;
     $schemaType: SchemaTypes;
-    private "$-schema-root";
-    $reactiveRootName?: string;
     constructor(defaultValue: any, ownSchema?: Schema, name?: string);
     defineProp(name: string, propDefaultValue?: any): Schema;
+    asObject(dftValue?: any): Schema;
     asArray(dftItemValue?: any): Schema;
     getRootSchema(): Schema;
-    getValueByPath(target: any): any;
+    getNamePaths(): string[];
+    getValueFromRoot(target: any): any;
+    getScopedSchema(): Schema;
+    getScopedNamePaths(): string[];
+    getValueFromScope(scope: Scope): any;
     createReactive(ownOrValue?: any): Reactive;
 }
 export interface IChangeItem {
@@ -100,10 +127,11 @@ export interface IArrayChangeEvent extends IChangeEvent {
 export declare class Reactive extends Subect {
     $reactiveName: string;
     $reactiveValue: any;
-    $ownReactive: Reactive;
-    $schema: Schema;
+    $reactiveOwn: Reactive;
+    $reactiveSchema: Schema;
     $reactiveType: SchemaTypes;
-    constructor(ownOrValue: any, schema: Schema, name?: string);
+    $reactiveScope?: Scope;
+    constructor(ownOrValue: any, schema: Schema, name?: string, scope?: Scope);
     update(value: any, src?: any): Reactive;
     get(): any;
 }
@@ -114,6 +142,15 @@ export declare class ConstantReactive extends Reactive {
     notify(...args: any[]): ConstantReactive;
     get(): any;
     update(value: any): ConstantReactive;
+}
+export declare class Scope {
+    '$-scope-root'?: Scope;
+    '$-scope-parent': Scope;
+    constructor(parent?: Scope);
+    reactive(name: string, schema: Schema, initValue?: any): Reactive;
+    get(name: string): Reactive;
+    createScope(): Scope;
+    rootScope(): Scope;
 }
 export interface IVNode {
     tag?: string;
@@ -131,28 +168,34 @@ export declare let createVNode: (tag: string | {
 }, attrs: string | {
     [name: string]: any;
 }, ...args: any[]) => IVNode;
+export declare type TStatesSchemaBuilder = (builder: (statesSchema: Schema) => any) => any;
+export declare type TComponentCtor = {
+    new (statesSchemaBuilder?: TStatesSchemaBuilder): IComponent<any>;
+};
+export declare type TTemplateFunc = (states: any, statesSchemaBuilder?: TStatesSchemaBuilder) => any;
+export declare type TComponentFunc = TComponentCtor | TTemplateFunc;
 export interface IComponentMeta {
-    stateSchema?: Schema;
+    tag?: string;
     vnode?: IVNode;
-    reactives?: {
-        [name: string]: Reactive;
+    statesSchema?: Schema;
+    localSchemas?: {
+        [name: string]: Schema;
     };
 }
 export interface IComponent<T> extends IDisposable {
     $meta: IComponentMeta;
-    $reactives: {
-        [name: string]: Reactive;
-    };
-    states: any;
+    $cid: string;
+    $tag?: string;
+    $scope: Scope;
+    $states: Reactive;
     $ownComponent?: IComponent<any>;
     $element?: any;
-    template: IVNode | {
-        (states: T): any;
-    };
+    template: IVNode | TTemplateFunc;
     render?(element: HTMLElement, vm: any): HTMLElement;
     refresh(states: T): IComponent<T>;
 }
-export declare function enumerator<T>(arraySchema?: Schema): T;
+export declare function local<T>(localSchema?: Schema): T;
+export declare function localFor<T>(schema: Schema): T;
 export declare let binders: {
     [name: string]: (ownComponent: IComponent<any>, element: HTMLElement, attrName: string, reactive: Reactive) => any;
 };
@@ -161,15 +204,15 @@ export declare let componentTypes: {
         new (): IComponent<any>;
     };
 };
-export interface IYuiOpts {
+export interface IYaOpts {
     element?: HTMLElement;
     states?: any;
     template?: IVNode;
 }
-export declare class Yui {
-    opts: IYuiOpts;
+export declare class YA {
+    opts: IYaOpts;
     $element: HTMLElement;
-    constructor(opts: IYuiOpts);
+    constructor(opts: IYaOpts);
 }
 declare const _default: any;
 export default _default;

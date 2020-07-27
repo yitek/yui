@@ -15,15 +15,15 @@ export function is_number(obj:any):boolean{
     return typeof obj ==="number";
 }
 export function is_assoc(obj:any):boolean{
-    if(!obj) return false;
+    if (!obj) return false;
     return Object.prototype.toString.call(obj)==="[object Object]";
 }
 
 
 export function is_object(obj:any):boolean{
-    if(!obj) return false;
+    if (!obj) return false;
     let t= Object.prototype.toString.call(obj) as string;
-    if(t.indexOf("[object ")==0)return true;
+    if (t.indexOf("[object ")==0) return true;
 }
 
 export function is_array(obj:any):boolean {
@@ -31,11 +31,11 @@ export function is_array(obj:any):boolean {
     return Object.prototype.toString.call(obj)==="[object Array]";
 }
 
-export function is_empty(obj:any):boolean{
-    if(!obj) return true;
+export function is_empty(obj:any):boolean {
+    if (!obj) return true;
     let t = typeof obj;
-    if(t==="function" || t==="number" || t==="boolean")return false;
-    for(let n in obj) return false;
+    if (t==="function" || t==="number" || t==="boolean")return false;
+    for (let n in obj) return false;
     return true;
 }
 ////////////////////////////////////////////////////////
@@ -51,8 +51,8 @@ let trimreg = /(^\s+)|(\s+$)/g;
  * @returns {string}
  */
 export function trim(text:any):string {
-    if(text===null || text===undefined) return "";
-    return text.toString().replace(trimreg,"");
+    if (text===null || text===undefined) return "";
+    return text.toString().replace(trimreg, "");
 }
 
 let percentRegx = /([+-]?[\d,]+(?:.\d+))%/g;
@@ -64,30 +64,30 @@ let percentRegx = /([+-]?[\d,]+(?:.\d+))%/g;
  * @param {*} text
  * @returns {number}
  */
-export function  is_percent(text:any):number {
-    if(text===null || text===undefined) return undefined;
+export function is_percent(text:any):number {
+    if (text===null || text===undefined) return undefined;
     let match = text.toString().match(percentRegx);
-    if(match)return match[1];
+    if (match) return match[1];
 }
 
 /////////////////////
 // 数组处理
 
 
-export function array_index(obj:any,item:any,start:number=0):number {
+export function array_index(obj:any, item:any, start:number=0):number {
     if(!obj) return -1;
-    for(let i = start,j=obj.length;i<j;i++) {
+    for(let i= start, j= obj.length; i<j; i++) {
         if(obj[i]===item) return i;
     }
     return -1;
 }
 export function array_contains(obj:any,item:any):boolean {
-    return array_index(obj,item)>=0;
+    return array_index(obj, item)>=0;
 }
 export function array_add_unique(arr:any[],item:any):boolean{
     if(!arr || !arr.push) return false;
-    for(let i = 0,j=arr.length;i<j;i++) {
-        if(arr[i]===item) return false;
+    for (let i = 0, j=arr.length; i<j; i++) {
+        if (arr[i]===item) return false;
     }
     arr.push(item);
     return true;
@@ -95,9 +95,9 @@ export function array_add_unique(arr:any[],item:any):boolean{
 export function array_remove(arr:any[],item:any):boolean{
     if(!arr || !arr.push || !arr.shift) return false;
     let hasItem = false;
-    for(let i = 0,j=arr.length;i<j;i++) {
+    for (let i = 0, j=arr.length; i<j; i++) {
         let existed = arr.shift();
-        if(existed!==item) arr.push(existed);
+        if (existed!==item) arr.push(existed);
         else hasItem = true;
     }
     return hasItem;
@@ -108,49 +108,89 @@ export function array_remove(arr:any[],item:any):boolean{
 
 export let extend :(...args)=>any= function (){
     let target = arguments[0] ||{};
-    for(let i =1,j=arguments.length;i<j;i++){
+    for (let i=1, j=arguments.length; i<j; i++) {
         let o = arguments[i];
-        if(o) for(let n in o) target[n] = o[n];
+        if (o) for (let n in o) target[n] = o[n];
     }
     return target;
 }
 
-
-
-function implicit(target?,members?){
-    function _implicit(target,name?,value?){
-        if(name===undefined){
-            target = target.prototype||target;
-            for(let n in target) Object.defineProperty(target,n,{enumerable:false,writable:true,configurable:true,value:value===undefined?target[n]:value});
+export function accessable(desc:any,target?,name?,value?){
+    // 标记用法 @notation() 
+    if(target===undefined) return function(target,name?) {
+        if(name===undefined) {
+            // 标记应用在class或object上 
+            // @notation() class T {}
+            target = target.prototype || target;
+            for(let n in target) {
+                desc.value = target[n];
+                Object.defineProperty(target, n,desc);
+            }
+        }else {
+            // 标记应用在成员上
+            // class T { @notation() id:string;} 
+            desc.value = target[name];
+            Object.defineProperty(target, name, desc);
         }
-        Object.defineProperty(target,name,{enumerable:false,writable:true,configurable:true,value:value===undefined?target[name]:value});
+    };
+    if(name===undefined){
+        // 指定对象所有成员的可访问性
+        // implicit({name:''})
+        for(let n in target) {
+            desc.value = target[n];
+            Object.defineProperty(target, n,desc);
+        }
+        return target;
     }
-    //作为装饰器工厂调用
-    if(target===undefined)return _implicit;
-    //将整个对象成员变成不可枚举
-    if(!members){
-        for(let n in target) Object.defineProperty(target,n,{enumerable:false,writable:true,configurable:true,value:target[n]});
-        return;
+
+    if(typeof name==='object'){
+        if(is_array(name)) {
+            for(const membername of name) {
+                desc.value = target[membername];
+                Object.defineProperty(target, membername , desc);
+            }
+        }else {
+            for(var n in name) {
+                desc.value = name[n];
+                Object.defineProperty(target , n , desc);
+            }
+        }
+        return target;
     }
-    //指定成员对象，noenumerable(obj,['a','b'])
-    if(is_array(members)){
-        for(const name of members)  Object.defineProperty(target,name,{enumerable:false,configurable:true,writable:true,value:target[name]});
-        return;
-    }
-    for(let n in members)  Object.defineProperty(target,n,{enumerable:false,configurable:true,writable:true,value:members[n]});
-    
+    desc.value = value;
+    Object.defineProperty(target,name,desc);
+    return target;
 }
 
-let cidSeeds:{[name:string]:number}={};
-function cid(name?:string):string{
-    if(name===undefined) name = "cid";
+
+/**
+ * 将成员变成隐式成员
+ * 不会被for循环到
+ * 但外部还是可以修改
+ * 
+ * @export
+ * @param {*} [target]
+ * @param {*} [name]
+ * @param {*} [value]
+ * @returns
+ */
+export function implicit(target?,name?,value?){
+    return accessable({enumerable:false,writable:true,configurable:true},target,name,value);    
+}
+export function constant(enumerable?:boolean,target?,name?,value?){
+    return accessable({enumerable:enumerable!==false,writable:false,configurable:true},target,name,value)
+}
+
+let cidSeeds : {[name:string]: number} = {};
+function cid(name?:string,spliter?):string{
+    if (name===undefined) name = "cid";
     let seed = cidSeeds[name];
-    if(seed===undefined) seed = cidSeeds[name]=0;
-    if(++seed>2100000000){
+    if (seed===undefined) seed = cidSeeds[name] = 0;
+    if (++seed>2100000000){
         seed = -2100000000;
         cidSeeds[name] = seed;
     } 
-    return `${name}!{seed}`;
+    return `${name}{spliter||""}{seed}`;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////
@@ -163,8 +203,8 @@ export enum FulfillStates{
     rejected
 }
 export class IFulfill{
-    "$-fullfill-status":FulfillStates;
-    "$-fullfill-value":any;
+    "$-fullfill-status" : FulfillStates;
+    "$-fullfill-value" : any;
 }
 
 
@@ -175,58 +215,69 @@ export interface IDisposable{
 }
 
 export function disposable(obj):IDisposable{
-    obj.dispose = function(handler?):IDisposable{
-        let disposeHandlers = this["$-dispose-handlers"];
-        if(disposeHandlers===null) throw new Error("已经被释放，不能再调用dispose");
+    implicit(obj,'dispose' , function(handler?):IDisposable{
+        let disposeHandlers = this['$-dispose-handlers'];
+        if (disposeHandlers===null) throw new Error("已经被释放，不能再调用dispose");
         
         if(handler===undefined){
-            
-            this["$-dispose-handlers"]=null;
-            if(disposeHandlers) for(const dHandler of disposeHandlers){
-                dHandler.call(this);
-            }
+            if(disposeHandlers){
+                for (const dHandler of disposeHandlers) {
+                    dHandler.call(this);
+                }
+                constant(false,this, '$-dispose-handlers', undefined);
+            } 
         }else{
-            if(disposeHandlers===undefined){
-                Object.defineProperty(this,"$-dispose-handlers",{enumerable:false,configurable:true,writable:true,value:disposeHandlers=[]});
+            if (disposeHandlers===undefined) {
+                constant(false,this, '$-dispose-handlers', disposeHandlers=[]);
             }
             disposeHandlers.push(handler);
         }
         return this;
-    }
+    });
     return obj;
 }
 
 export class Subect{
-    "$-subject-topics":{[topic:string]:{(...args:any[]):any}[]};
-    subscribe(topic:string|{(...evt:any[]):any},listener?:{(...evts:any[]):any}|IDisposable,refObject?:IDisposable):Subect{
-        if(listener===undefined){
+    '$-subject-topics' : { [topic: string]: {(...args: any[]):any}[] };
+
+    subscribe(
+        topic: string | { (...evt: any[]):any }, 
+        listener?:{ (...evts: any[]):any } | IDisposable, 
+        refObject?:IDisposable
+    ):Subect {
+        if ( listener===undefined ){
             listener = topic as (...evts:any[])=>any;
             topic = "";
             refObject = undefined;
-        } else if((listener as IDisposable).dispose){
+        } else if ( (listener as IDisposable).dispose ){
             refObject = listener as IDisposable;
             listener = topic as {(...evt:any[]):any};
             topic ="";
         }
-        if(typeof listener!=="function") throw new Error(`subject的lisntener必须是函数`);
-        let topics = this["$-subject-topics"];
-        if(!topics) Object.defineProperty(this,"$-subject-topics",{enumerable:false,writable:false,configurable:false,value:topics=this["$-subject-topics"]={}});
-        let listeners = topics[topic as string] || (topics[topic as string]=[]);
+        if (typeof listener!=='function') 
+            throw new Error(`subject的lisntener必须是函数`);
+
+        let topics = this['$-subject-topics'];
+        if(!topics) constant(false, this, '$-subject-topics', topics= this["$-subject-topics"]={});
+        let listeners = topics[topic as string] || ( topics[topic as string]= [] );
         listeners.push(listener as (...evts:any[])=>any);
         if(refObject){
-            refObject.dispose(()=>{
+            refObject.dispose( ()=>{
                 array_remove(listeners,listener);
             });
         }
         return this;
     }
-    unsubscribe(topic:string|{(evt:any):any},listener:{(evt:any):any}):Subect{
-        if(listener===undefined){
+    unsubscribe(
+        topic: string | {(evt:any):any},
+        listener: {(evt:any):any}
+    ):Subect {
+        if( listener===undefined ){
             listener = topic as (...evt:any[])=>any;
             topic = "";
         }
-        let topics = this["$-subject-topics"];
-        if(topics){
+        let topics = this['$-subject-topics'];
+        if (topics) {
             let listeners = topics[topic as string];
             array_remove(listeners,listener);
         }       
@@ -234,12 +285,12 @@ export class Subect{
         return this;
     }
 
-    notify(topic:any,evt?,...evts:any[]):Subect{
-        let topics = this["$-subject-topics"];
-        if(!topics)return this;
+    notify(topic:any, evt?, ...evts:any[]):Subect {
+        let topics = this['$-subject-topics'];
+        if (!topics) return this;
         let listeners,ckIndex;
-        if(typeof topic !=="string"){
-            listeners = topics[""] ;
+        if (typeof topic !=="string") {
+            listeners = topics[''] ;
             ckIndex = 1;
         }else{
             listeners = topics[topic as string];
@@ -248,20 +299,20 @@ export class Subect{
         if(!listeners) return this;
                 
         let args,useApply;
-        if(arguments[ckIndex]!==undefined){
-            args=[];useApply =true;
-            for(let i = 0,j=arguments.length;i<j;i++) args.push(arguments[i]);
-        }else args = arguments[ckIndex-1];
+        if ( arguments[ckIndex]!==undefined ) {
+            args = [];useApply= true;
+            for (let i=0, j=arguments.length; i<j; i++) 
+                args.push(arguments[i]);
+        } else args = arguments[ckIndex-1];
 
-        for(let i =0,j=listeners.length;i<j;i++){
+        for (let i= 0, j= listeners.length; i<j; i++){
             let handler = listeners[i];
-            if(useApply) handler.apply(this,args);else handler.call(this,args);
+            if(useApply) 
+                handler.apply(this, args);
+            else 
+                handler.call(this, args);
         }
         return this;
-    }
-    static mixin(target):any{
-        for(let n in Subect.prototype) target[n] = Subect.prototype[n];
-        return target;
     }
 }
 
@@ -270,91 +321,174 @@ export enum SchemaTypes{
 }
 @implicit()
 export class Schema{
-    $schemaName:string;
-    $schemaNames:string[];
-    $schemaItemNames:string[];
-    $ownSchema:Schema;
-    $schemaDefaultValue:any;
-    $arrayItemSchema:Schema;
-    $schemaType:SchemaTypes;
-    private "$-schema-root":Schema;
-    $reactiveRootName?:string;
-    constructor(defaultValue,ownSchema?:Schema,name?:string){
-        if(defaultValue===Schema) return;
-        if(defaultValue && defaultValue.$schemaType!==undefined) defaultValue= defaultValue.$schemaDefaultValue;
-        let names:string[]=[];
-        if(ownSchema) {
-            for(const n of ownSchema.$schemaNames) names.push(n);
-            names.push(name);
+    $schemaName: string;
+    private '$-schema-root': Schema;
+    private '$-schema-name-paths-from-root': string[];
 
-        }
+    /**
+     * 在作用域上的名字
+     * 如果为空，表示不是作用域变量
+     * 如果该字段有值，表示该Schema的变量将会从scope上面去取
+     * 
+     * @type {string}
+     * @memberof Schema
+     */
+    $schemaScopedName?: string;
+    private '$-schema-scoped': Schema;
+    private '$-schema-name-paths-from-scoped': string[];
+
+    $schemaOwn: Schema;
+    $schemaDefaultValue: any;
+    $schemaArrayItem: Schema;
+    $schemaType: SchemaTypes;
+
+    constructor(defaultValue, ownSchema?: Schema, name?: string){
+        if (defaultValue===Schema) return;
+        if ( defaultValue && defaultValue.$schemaType!==undefined ) defaultValue = defaultValue.$schemaDefaultValue;
         
-        implicit(this,{
-            "$ownSchema":ownSchema,
-            "$schemaName" : name,
-            "$schemaDefaultValue":defaultValue,
-            "$schemaType":SchemaTypes.value,
-            "$schemaNames":names,
-            "$-schema-root":undefined,
-            "$reactiveRootName":undefined
+        implicit(this, {
+            '$schemaName': name,
+            '$-schema-root': undefined,
+            '$-schema-name-paths-from-root':undefined,
+
+            '$scopedName': undefined,
+            '$-schema-scoped': undefined,
+            '$-schema-name-paths-from-scope':undefined,
+
+            '$schemaOwn': ownSchema,
+            '$schemaDefaultValue': defaultValue,
+            '$schemaType': SchemaTypes.value,
+            '$schemaArrayItem': undefined
         });
 
         
         let t = typeof defaultValue;
-        if(t==="object"){
-            if(is_array(defaultValue)){
+        if (t==='object') {
+            if (is_array(defaultValue)) {
                 this.asArray(defaultValue[0]);
-            }else {
-                for(let n in defaultValue){
-                    this.defineProp(n,defaultValue[n]);
+            } else {
+                for (let n in defaultValue) {
+                    this.defineProp(n, defaultValue[n]);
                 }
             }
         }
     }
-    defineProp(name:string,propDefaultValue?):Schema{
-        if(this.$schemaType===SchemaTypes.value) {
+    defineProp(name:string, propDefaultValue?):Schema{
+        if ( this.$schemaType===SchemaTypes.value ) {
             this.$schemaType = SchemaTypes.object;
-            if(this.$schemaDefaultValue===undefined)this.$schemaDefaultValue = {};
-        }else if(this.$schemaType===SchemaTypes.array){
+            if( this.$schemaDefaultValue===undefined )
+                this.$schemaDefaultValue = {};
+        } else if( this.$schemaType===SchemaTypes.array ) {
             throw new Error(`已经是array了，不可以再定义属性`);
         }
-        if(propDefaultValue===undefined){
-            propDefaultValue = this.$schemaDefaultValue?this.$schemaDefaultValue[name]:undefined;
+        if ( propDefaultValue===undefined ) {
+            propDefaultValue = this.$schemaDefaultValue ? this.$schemaDefaultValue[name] : undefined;
         }
-        let propSchema = new Schema(propDefaultValue,this,name);
+        let propSchema = new Schema(propDefaultValue, this, name);
         this[name] = propSchema;
         return propSchema;
     }
+    asObject(dftValue?):Schema{
+        if ( this.$schemaType===SchemaTypes.value ) {
+            this.$schemaType = SchemaTypes.object;
+            if( this.$schemaDefaultValue===undefined )
+                this.$schemaDefaultValue = {};
+        } else if( this.$schemaType===SchemaTypes.array ) {
+            throw new Error(`已经是array了，不可以再定义属性`);
+        }
+
+        if (dftValue) for (var n in dftValue) {
+            let existed:Schema = this[n];
+            let propValue = dftValue[n];
+            let propSchema:Schema;
+            if (existed) {
+                if(!propValue) continue;
+            }
+            propSchema = new Schema(propValue, this, name);
+            this[n] = propSchema;
+        }
+        return this;
+    }
     asArray(dftItemValue?:any):Schema{
-        if(this.$arrayItemSchema && dftItemValue===undefined)return this.$arrayItemSchema;
-        if(this.$schemaType!==SchemaTypes.value){
+        if ( this.$schemaArrayItem && dftItemValue===undefined ) return this.$schemaArrayItem;
+        if ( this.$schemaType!==SchemaTypes.value ) {
             throw new Error(`已经是array/object了，不可以再定义item`);
         }
         this.$schemaType = SchemaTypes.array;
-        let  itemSchema =  new Schema(dftItemValue,this);
-        Object.defineProperty(this,"$arrayItemSchema",{value:itemSchema,writable:true,enumerable:false,configurable:false});
-        let lengthSchema = new Schema(0,this,"length");
-        Object.defineProperty(this,"length",{value:lengthSchema,enumerable:false,writable:true,configurable:false});
+        let  itemSchema =  new Schema(dftItemValue, this);
+        this.$schemaArrayItem = itemSchema;
+        let lengthSchema = new Schema(0, this, 'length');
+        constant(false , this, 'length', lengthSchema);
         return itemSchema;
     }
 
     getRootSchema():Schema{
-        let root = this["$-schema-root"];
-        if(!root){
+        let root = this['$-schema-root'];
+        if ( !root ) {
             root = this;
-            while(root.$ownSchema){
-                root = root.$ownSchema;
+            while ( root.$schemaOwn ){
+                root = root.$schemaOwn;
             }
-            this["$-schema-root"] = root;
+            this['$-schema-root'] = root;
         }
         return root;
     }
+    getNamePaths():string[] {
+        let names:string[] = this['$-schema-name-paths-from-root'];
+        if(names) return names;
+        names = [this.$schemaName];
+        let schema = this as Schema;
+        while (schema) {
+            names.unshift( schema.$schemaName );
+            schema = schema.$schemaOwn;
+        }
+        this['$-schema-name-paths-from-root'] = names;
+        return names;
+    }
 
-    getValueByPath(target):any{
-        let names = this.$schemaNames;
+    getValueFromRoot( target ):any{
+        let names = this.getNamePaths();
         let value = target;
         for(const name of names) {
             value = value[name];
+            if(value===undefined) return value;
+        }
+        return value;
+    }
+
+    getScopedSchema():Schema{
+        let scoped = this['$-schema-scoped'];
+        if (scoped===undefined) {
+            scoped = this;
+            while ( scoped && !scoped.$schemaScopedName ) {
+                scoped = scoped.$schemaOwn;    
+            }
+            this['$-schema-root'] = scoped || null;
+        }
+        return scoped;
+    }
+    getScopedNamePaths():string[]{
+        let names:string[] = this['$-schema-name-paths-from-scoped'];
+        if( names ) return names;
+        names = [];
+        let schema = this as Schema;
+        while (schema && !schema.$schemaScopedName ) {
+            names.unshift(schema.$schemaName);
+            schema = schema.$schemaOwn;
+        }
+        if (schema) names.unshift(schema.$schemaScopedName);
+        this['$-schema-name-paths-from-scoped'] = names.length===0 ? null : names;
+        return names;
+    }
+
+    getValueFromScope(scope:Scope):any {
+        let names = this.getScopedNamePaths();
+        if (!names) {
+            console.warn(`没有找到scopedName,默认返回undefined`, this, scope);
+        }
+        let value = scope.get(names[0]);
+        for (let i=1 ,j=names.length; i<j;i++) {
+            value = value[names[i]];
             if(value===undefined) return value;
         }
         return value;
@@ -364,6 +498,7 @@ export class Schema{
         return new Reactive(ownOrValue,this);
     }
 }
+
 
 export interface IChangeItem{
     index:number;
@@ -389,96 +524,104 @@ export interface IArrayChangeEvent extends IChangeEvent{
 export class Reactive extends Subect{
     $reactiveName:string;
     $reactiveValue:any;
-    $ownReactive:Reactive;
-    $schema:Schema;
+    $reactiveOwn:Reactive;
+    $reactiveSchema:Schema;
     $reactiveType:SchemaTypes;
+    $reactiveScope?:Scope;
     
-    constructor(ownOrValue:any,schema:Schema,name?:string){
+    constructor(ownOrValue:any, schema:Schema, name?:string, scope?:Scope){
         super();
         
         name = name===undefined?schema?.$schemaName:name;
-        let own:Reactive,value;
-        if(ownOrValue instanceof Reactive){
+        let own:Reactive, value;
+        if (ownOrValue instanceof Reactive) {
             own = ownOrValue;
             let ownValue = own.$reactiveValue;
             if(ownValue) value = ownValue[name];
-        }else if(ownOrValue!==Reactive) {
+        } else if (ownOrValue!==Reactive) {
             value = ownOrValue;
         }
-        if(value===undefined && schema) value = schema.$schemaDefaultValue;
-        implicit(this,{
-            "$reactiveName":name,
-            "$schema":schema,
-            "$ownReactive":own,
-            "$reactiveType":schema?schema.$schemaType:SchemaTypes.value,
-            "$reactiveValue":value
+        if(!schema) 
+            schema = new Schema(value);
+        if (value===undefined) 
+            value = schema.$schemaDefaultValue;
+        
+        implicit(this, {
+            '$reactiveName': name,
+            '$reactiveSchema': schema,
+            '$reactiveOwn': own,
+            '$reactiveType': schema?schema.$schemaType:SchemaTypes.value,
+            '$reactiveScope': scope
         });
-        if(ownOrValue===Reactive) return;
-        if(schema.$schemaType===SchemaTypes.object){
+        if (ownOrValue===Reactive) {
+            implicit(this, '$reactiveValue', value);
+            return;
+        }
+        
+        if (schema.$schemaType===SchemaTypes.object) {
             if(typeof value!=="object") value = {};
-            Object.defineProperty(this,"$reactiveValue",{enumerable:false,writable:true,configurable:true,value:value});
-            for(let n in schema){
+            for (let n in schema){
                 let fc = n[0];
                 if(n==="constructor" || fc==="$" || fc==="_" || fc==="-") continue;
-                let subReacitve = new Reactive(this,schema[n],n);
+                let subReacitve = new Reactive(this, schema[n], n);
                 this[n] = subReacitve;
             }
             
-        }else if(schema.$schemaType===SchemaTypes.array){
-            if(typeof value!=="object") value = [];
-            Object.defineProperty(this,"$reactiveValue",{enumerable:false,writable:true,configurable:true,value:value});
-            for(let i = 0,j=value.length;i<j;i++){
-                let itemReacitve = new Reactive(this,schema.$arrayItemSchema,i as any as string);
+        } else if (schema.$schemaType===SchemaTypes.array) {
+            if (typeof value!=="object") value = [];
+            
+            for (let i = 0,j =value.length; i<j; i++) {
+                let itemReacitve = new Reactive(this,schema.$schemaArrayItem,i as any as string);
                 this[i] = itemReacitve;
             }
-            for(let n in schema){
-                if(!/^\d+$/.test(n))continue;
+            let numRegx = /^\d+$/;
+            for (let n in schema){
+                if(!numRegx.test(n))continue;
                 if(!this[n]){
-                    let itemReacitve = new Reactive(this,schema.$arrayItemSchema,n);
+                    let itemReacitve = new Reactive(this,schema.$schemaArrayItem, n);
                     this[n] = itemReacitve;
                 }
                 
             }
-            let lengthReactive =new Reactive(this,(schema as any).length);
-            Object.defineProperty(this,"length",{configurable:false,writable:true,enumerable:false,value:lengthReactive});
-            
-        }else{
-            Object.defineProperty(this,"$reactiveValue",{enumerable:false,writable:true,configurable:true,value:value});
-        }
+            let lengthReactive = new Reactive(this,(schema as any).length);
+            constant(false, this, 'length', lengthReactive);
+        } 
+        implicit(this, '$reactiveValue', value);
     }
     update(value,src?):Reactive{
-        let schemaType = this.$schema.$schemaType; 
-        if(schemaType===SchemaTypes.object){
-           updateObject(this,value,src);       
-        }else if(schemaType===SchemaTypes.array){
-            updateArray(this,value,src);
-        }else {
+        let schemaType = this.$reactiveSchema.$schemaType; 
+        if (schemaType===SchemaTypes.object) {
+           updateObject(this, value, src);       
+        } else if(schemaType===SchemaTypes.array) {
+            updateArray(this, value, src);
+        } else {
             let old = this.$reactiveValue;
-            if(value===old)return this;
+            if (value===old) return this;
             this.$reactiveValue=value;
-            if(this.$ownReactive){
-                this.$ownReactive.$reactiveValue[this.$reactiveName] = value;
+            if (this.$reactiveOwn) {
+                this.$reactiveOwn.$reactiveValue[this.$reactiveName] = value;
             }
             this.notify("",{
-                value:value,old:old,src:src||this,sender:this
+                value:value, old:old, src:src||this, sender:this
             });
         }
         return this;
     }
     get():any{
-        let schemaType = this.$schema.$schemaType;
-        if(schemaType === SchemaTypes.object){
+        let schemaType = this.$reactiveSchema.$schemaType;
+        if (schemaType === SchemaTypes.object){
             let result:any = {};
-            for(let n in this){
+            for (let n in this){
                 let reactive = this[n];
-                if(reactive instanceof Reactive)  result[n] = reactive.get();
+                if (reactive instanceof Reactive) result[n]= reactive.get();
             }
             return result;
-        }else if(schemaType === SchemaTypes.array){
+        } else if(schemaType === SchemaTypes.array) {
             let result = [];
-            for(let n in this){
+            for (let n in this){
                 let reactive = this[n];
-                if(n!=="length" && reactive instanceof Reactive) result.push(reactive.get());
+                if (n!=="length" && reactive instanceof Reactive) 
+                    result.push(reactive.get());
             }
             return result;
         }else{
@@ -489,62 +632,62 @@ export class Reactive extends Subect{
 
 @implicit()
 export class ConstantReactive extends Reactive{
-    constructor(value:any,name?:string){
-        super(Reactive,undefined);
-        this.$reactiveValue=value;
-        this.$reactiveName =name;
+    constructor(value:any, name?:string) {
+        super(Reactive, undefined);
+        this.$reactiveValue = value;
+        this.$reactiveName = name;
     }
-    subscribe(topic,listener?,refObj?):ConstantReactive{
+    subscribe(topic, listener?, refObj?):ConstantReactive {
         return this;
     }
-    unsubscribe(topic,listener?):ConstantReactive{
+    unsubscribe(topic, listener?):ConstantReactive {
         return this;
     }
-    notify(...args:any[]):ConstantReactive{
+    notify(...args:any[]):ConstantReactive {
         return this;
     }
-    get():any{return this.$reactiveValue;}
-    update(value):ConstantReactive{
+    get():any { return this.$reactiveValue; }
+    update(value):ConstantReactive {
         console.warn(`在ConstantReactive上调用了update操作,忽略。`,this,value);
         return this;
     }
 
 }
 
-function updateObject(reactive:Reactive,value,src){
+function updateObject(reactive:Reactive, value, src) {
     let old = reactive.$reactiveValue;
-    value ||(value={});
-    reactive.$reactiveValue=value;
-    if(reactive.$ownReactive){
-        reactive.$ownReactive.$reactiveValue[reactive.$reactiveName] = value;
+    value || (value={});
+    reactive.$reactiveValue = value;
+    if (reactive.$reactiveOwn){
+        reactive.$reactiveOwn.$reactiveValue[reactive.$reactiveName] = value;
     }
-    let event :IChangeEvent= {
-        value:value,old:old,sender:reactive,src:src||reactive
+    let event:IChangeEvent = {
+        value: value, old: old, sender: reactive, src: src||reactive
     };
-    if(old!==value){
+    if (old!==value) {
         reactive.notify(event);
-        if(event.cancel) return reactive;
+        if (event.cancel) return reactive;
     }
     
     let keys = Object.keys(value);
-    for(const n of keys){
+    for (const n of keys) {
         let propReacitve = reactive[n];
         if(propReacitve instanceof Reactive){
-            propReacitve.update(value[n],event);
+            propReacitve.update(value[n], event);
         }
     }
     return reactive;  
 }
 
-function updateArray(reactive:Reactive,value,src){
+function updateArray(reactive:Reactive, value, src) {
     let old = reactive.$reactiveValue;
-    value ||(value=[]);
+    value || (value=[]);
     reactive.$reactiveValue=value;
-    if(reactive.$ownReactive){
-        reactive.$ownReactive.$reactiveValue[reactive.$reactiveName] = value;
+    if (reactive.$reactiveOwn) {
+        reactive.$reactiveOwn.$reactiveValue[reactive.$reactiveName] = value;
     }
     let event :IArrayChangeEvent= {
-        value:value,old:old,src:src||reactive,sender:reactive
+        value:value, old:old, src:src||reactive, sender:reactive
     };
     
     let lengthReactive = (reactive as any).length as Reactive;
@@ -553,9 +696,9 @@ function updateArray(reactive:Reactive,value,src){
     let appends:IChangeItem[] = [];
     let removes:IChangeItem[] = [];
     let updates:IChangeItem[] = [];
-    for(let i =0,j=oldLength;i<j;i++){
+    for (let i =0, j=oldLength; i<j; i++) {
         let existsReactive = reactive[i] as Reactive;
-        let changeItem = {index:i,value:value[i],reactive:existsReactive};
+        let changeItem = { index: i, value: value[i], reactive:existsReactive };
         if(i<newLength){
             updates.push(changeItem);
         }else {
@@ -563,249 +706,434 @@ function updateArray(reactive:Reactive,value,src){
             delete reactive[i as any as string];
         }
     }
-    for(let i=oldLength,j=newLength-oldLength;i<j;i++){
-        let newItemReactive = new Reactive(reactive,reactive.$schema.$arrayItemSchema,i);
-        Object.defineProperty(reactive,i as any as string,{value:newItemReactive});
-        appends.push({value:value[i],reactive:newItemReactive,index:i});
+    for ( let i=oldLength, j=newLength-oldLength; i<j; i++ ) {
+        let newItemReactive = new Reactive(reactive, reactive.$reactiveSchema.$schemaArrayItem, i);
+        reactive[i as any as string] = newItemReactive;
+        appends.push({ value: value[i], reactive: newItemReactive, index: i });
 
     }
     event.appends=appends.length?appends:null;
     event.removes = removes.length?removes:null;
     event.updates = updates.length?updates:null;
-    if(value!==old || appends.length || removes.length){
+    if ( value!==old || appends.length || removes.length ) {
         reactive.notify(event);
-        if(event.cancel) return reactive;
+        if(event.cancel) 
+            return reactive;
     }
-    for(const item of updates){
+    for (const item of updates) {
         item.reactive.update(item.value,event);
+    }
+}
+///////////////////////////////////////////////////////////////////////////
+// Scope
+@implicit()
+export class Scope{
+    '$-scope-root'? : Scope;
+    '$-scope-parent' : Scope;
+    constructor(parent?:Scope){
+        constant(false,this,'$-scope-parent',parent);
+    }
+    reactive(name:string, schema:Schema, initValue?):Reactive{
+        let reactive:Reactive;
+        if (schema===undefined){
+            reactive = this[name];
+        }
+        if (!reactive){
+            reactive = new Reactive(initValue, schema,undefined, this);
+            this[name] = reactive;
+        }
+        return reactive;
+    }
+    get(name:string):Reactive {
+        if (this[name]!=null) return this[name];
+        if (this['$-scope-parent']) return this['$-scope-parent'].get(name);
+    }
+    createScope():Scope{
+        return new Scope(this);
+    }
+    rootScope():Scope{
+        let root = this['$-scope-root'];
+        if(root) return root;
+        root = this;
+        while (root){
+            let p = root["$-scope-parent"]; 
+            if (p) root = p;
+            else {
+                constant(false,this,'$-scope-root',root);
+                return root;
+            }
+        }
     }
 }
 
 ///////////////////////////////////////////////////////////////////////////
 //VNode
 export interface IVNode{
-    tag?:string,
-    component?:{new():IComponent<any>};
-    attrs?:{[name:string]:any},
-    content?:string;
-    children?:IVNode[];
+    tag? : string,
+    component? : {new():IComponent<any>};
+    attrs? : {[name:string]:any},
+    content? : string;
+    children? : IVNode[];
 }
-function _createVNode(tag:string|{new()},attrs:string|{[name:string]:any}):IVNode{
+function _createVNode(tag:string|{new()}, attrs:string|{[name:string]:any}):IVNode {
     let vnode :IVNode={};
     let tagType = typeof tag;
-    if(tagType==="string") vnode.tag = tag as string;
-    else if(tagType==="function") vnode.component=  tag as {new()}; 
-    else {vnode.content= attrs as string;return vnode;}
+
+    if(tagType==="string") 
+        vnode.tag = tag as string;
+    else if(tagType==="function") 
+        vnode.component=  tag as {new()}; 
+    else 
+        {vnode.content= attrs as string;return vnode;}
+    
     vnode.attrs = attrs as {[name:string]:any};
     let children :IVNode[];
-    for(let i = 2;i<arguments.length;i++){
+    for (let i = 2; i<arguments.length; i++) {
         let child = arguments[i];
-        if(!children) children=[];
-        if(typeof child==="string") children.push({content:child});
-        else children.push(child);
+        if (!children) children=[];
+        if (typeof child==="string") 
+            children.push({content:child});
+        else 
+            children.push(child);
     }
     vnode.children = children;
     return vnode;
 }
-export let createVNode :(tag:string|{new()},attrs:string|{[name:string]:any},...args:any[])=>IVNode = _createVNode;
+export let createVNode: 
+    (tag: string | {new()}, attrs: string | { [name:string]:any }, ...args: any[])=>IVNode 
+    = _createVNode;
+
 globalThis.createVNode = createVNode;
 
 ////////////////////////////
 // component
 
+export type TStatesSchemaBuilder = ( builder: (statesSchema:Schema)=>any ) => any; 
+
+export type TComponentCtor = { new( 
+    statesSchemaBuilder?: TStatesSchemaBuilder
+):IComponent<any> };
+
+export type TTemplateFunc = (
+    states: any, 
+    statesSchemaBuilder?: TStatesSchemaBuilder
+)=>any;
+
+export type TComponentFunc = TComponentCtor | TTemplateFunc;
+
 export interface IComponentMeta{
-    stateSchema?:Schema;
-    vnode?:IVNode;
-    reactives?:{[name:string]:Reactive};
+    tag? : string;
+    vnode? : IVNode;
+    statesSchema?: Schema;
+    localSchemas? : { [name:string] : Schema };
 }
+
 export interface IComponent<T> extends IDisposable{
-    $meta:IComponentMeta;
-    $reactives:{[name:string]:Reactive};
-    states:any;
-    $ownComponent?:IComponent<any>;
-    $element?:any;
-    template:IVNode|{(states:T):any};
-    render?(element:HTMLElement,vm:any):HTMLElement;
+    $meta : IComponentMeta;
+    $cid : string;
+    $tag? : string;
+    $scope : Scope;
+    $states : Reactive;
+    $ownComponent? : IComponent<any>;
+    $element? : any;
+    template : IVNode|TTemplateFunc;
+    render?(element:HTMLElement, vm:any):HTMLElement;
     refresh(states:T):IComponent<T>;
 }
 declare let Proxy;
 let proxyHandlers = {
-    get:function(obj:Schema,name:string){
-        if(name==="$-schema-proxy-raw") return obj;
+    get: function(obj:Schema, name:string) {
+        if (name==='$-schema-proxy-raw') 
+            return obj;
         let value = obj[name];
-        if(value===undefined) return createSchemaProxy(obj.defineProp(name));
+        if (value===undefined) 
+            return createSchemaProxy(obj.defineProp(name));
         let ch = name[0];
-        if(ch==="$" || ch==="_" || ch==="-") return value;
-        if(value instanceof Schema) return createSchemaProxy(value);
+        if (ch==='$' || ch==='_' || ch==='-') 
+            return value;
+        if (value instanceof Schema) 
+            return createSchemaProxy(value);
         return value;
     }
-    
 };
-function createSchemaProxy(schema,defaultValue?){
-    if(defaultValue!==undefined) schema.$schemaDefaultValue= defaultValue;
-    return new Proxy(schema,proxyHandlers);
-}
 
-let renderStack:{[name:string]:Schema}[]=[];
-
-export function enumerator<T>(arraySchema?:Schema):T{
-    if(arraySchema) return arraySchema.asArray() as any as T;
-    let context = renderStack.pop();
-    renderStack.push(context);
-}
-
-function buildUI(vnode:IVNode ,ownComponent:IComponent<any>):HTMLElement{
-         
-    let componentType;
-    if(vnode.tag) {
-        componentType = componentTypes[vnode.tag];
-    }else componentType = vnode.component;
-    if(componentType){
-        return buildComponent(componentType,vnode.attrs,vnode.children,ownComponent);
-    }else{
-        if(vnode.tag)
-            return buildElement(vnode.tag,vnode.attrs,vnode.children,ownComponent);
-        else return buildText(vnode.content,ownComponent);
+function createElement(descriptor:IVNode ,ownComponent?:IComponent<any>, scope?:Scope):HTMLElement {  
+    let element = createComponentNode(descriptor,ownComponent,scope);
+    if (!element) {
+        element = createElementNode(descriptor, ownComponent, scope);
+        if (!element)
+            element = createTextNode(descriptor.content, ownComponent,scope);
     }
+    return element;
 }
 
-function buildComponent(compoentType:{new():IComponent<any>},vm:{[name:string]:any},children:IVNode[],ownComponent:IComponent<any>):HTMLElement{
-    let component = createComponent(compoentType,ownComponent,vm);
-    let elem = component.$element = buildUI(component.$meta.vnode,component);
-    if(component.render) {
-        let newElem = component.render(elem,vm);
-        if(newElem)elem = newElem;
+function createComponentNode(descriptor:IVNode, ownComponent: IComponent<any>, scope?: Scope):HTMLElement {
+    let componentFunc: TComponentFunc;
+    if (descriptor.component) {
+        componentFunc = descriptor.component;
+    } else if (descriptor.tag) componentFunc = componentTypes[descriptor.tag];
+    if(!componentFunc) return null;
+
+    let component = newComponent(componentFunc, descriptor.attrs, ownComponent, scope);
+    bindComponentStates(component,descriptor.attrs,scope)
+    let element = component.$element = createElement(component.$meta.vnode, component,component.$scope);
+    constant(false, element,'$-ya-component', component);
+    constant(false, component,'$element',element);
+    return element;
+}
+function newComponent(
+    componentFunc: TComponentFunc,
+    vm: { [name:string]: any },
+    ownComponent: IComponent<any>,
+    scope:Scope
+):IComponent<any> {
+    // 获取或构建componentType
+    let componentType:TComponentCtor;
+    let isTemplateFunc = false;
+    // 没有template方法，它自己就是template方法
+    if (!componentFunc.prototype.template) {
+        isTemplateFunc = true;
+        // 从template方法中获取到原先构建的componentType
+        componentType = componentFunc['$-component-type'];
+        // 没获取到，表示从未构建，要重新构建一个componentType
+        if ( !componentType ){
+            let template = componentFunc;
+            componentType = function(){} as any;
+            componentType.prototype.template = template;
+            constant(false, template,'$-component-type', componentType);
+            constant(false, componentType,'$-component-template', template);
+        }
+    }else componentType = componentFunc as TComponentCtor;
+    
+    let meta:IComponentMeta = componentType.prototype.$meta;
+    if(!meta) {
+        constant(false, componentType.prototype, '$meta', meta = {});
     }
-    Object.defineProperty(elem,"$-yui-component",{value:component});
-    return elem;
-}
-function createComponent(componentType:{new():IComponent<any>},ownComponent:IComponent<any>,vm:{[name:string]:any}):IComponent<any>{
-    let component = new componentType();
-    if(!component.dispose){disposable(component);}
-    component.$ownComponent = ownComponent;
-    sureComponentMeta(component,componentType,vm);
-    let states = component.$meta.stateSchema.createReactive();
-    component.$reactives={"":states};
+    meta.localSchemas || (meta.localSchemas={});
 
+    let statesSchemaBuilder:TStatesSchemaBuilder = sureStatesSchema(meta, componentType);
+    
+    let component:IComponent<any> = new componentType(statesSchemaBuilder||function(){});
+    constant(false,component,'$ownComponent', ownComponent);
+    sureTagAndIds(component, meta, componentType);
+    sureVNode(component, meta, statesSchemaBuilder, vm);
+    
+    if (!component.dispose) { disposable(component); }
+    
+
+    scope || (scope = ownComponent?.$scope);
+    
+    let componentScope =  scope ? scope.createScope() : new Scope();
+    constant(false, component,'$scope',componentScope);
+    constant(false, component,'$states',componentScope.reactive('states',meta.statesSchema, vm));
    
     return component;
 }
-function sureComponentMeta(component:IComponent<any>,componentType:{new():IComponent<any>},vm:{[name:string]:any}):IComponentMeta{
-    let meta = componentType.prototype.$meta ||(componentType.prototype.$meta={reactives:{}});
-    let vnode = meta.vnode;
-    if(vnode===undefined){
-        let schema = meta.stateSchema;
-        if(!schema) schema = meta.stateSchema = new Schema(undefined);
-        schema.$reactiveRootName="";
-        let proxy = createSchemaProxy(schema,vm);
+
+function sureStatesSchema(meta:IComponentMeta, componentType :TComponentCtor): TStatesSchemaBuilder {
+    let statesSchemaBuilder: TStatesSchemaBuilder;
+    if (!meta.statesSchema) {
+        let statesSchema = new Schema(undefined, undefined);
+        statesSchema.$schemaScopedName = "states";
+        meta.statesSchema = statesSchema;
+        statesSchemaBuilder = ( builder: (statesSchema:Schema)=>any )=> {
+            let dftStatesObj = builder.call(this , statesSchema);
+            if (dftStatesObj!==undefined){
+                statesSchema.asObject(dftStatesObj);
+            }
+        };
         
-        vnode = meta.vnode = typeof component.template==="function"?component.template(proxy):component.template;
     }
-    return meta;
+    return statesSchemaBuilder;
 }
-function bindComponentStates(component:IComponent<any>,attrs:{[name:string]:any}){
-    let states = component.$reactives[""];
-    let ownReactives = component.$ownComponent?.$reactives;
-    for(let attrName in attrs)(function(attrName:string,bindValue,states:Reactive){
-        if(bindValue && bindValue["$-schema-proxy-raw"]) bindValue = bindValue["$-schema-proxy-raw"];
-        let vmProp = states[attrName] as Reactive;
-        if(!vmProp){
-            debugger;
-            let bindVal= bindValue?(bindValue.$reactiveType!==undefined?bindValue.$reactiveValue:bindValue):bindValue;
-            vmProp = states[attrName] = new ConstantReactive(bindVal,attrName);
+
+function sureTagAndIds(compInstance:IComponent<any>, meta:IComponentMeta, componentType:TComponentCtor){
+    let tag = compInstance.$tag;
+    if(!tag) {
+        tag = meta.tag || (meta.tag = cid('ya-component-type-'));
+        constant(false,compInstance,'$tag',tag);
+    }
+    let existed = componentTypes[tag];
+    if(existed){
+        if(existed !== componentType) {
+            componentTypes[tag] = componentType;
+            console.warn(`标签${tag}被替换成了新的组件类`, componentType, existed);
+        } 
+    }else componentTypes[tag] = componentType;
+
+    constant(false,compInstance, '$cid',  cid(tag,'#'));
+}
+
+function sureVNode(component:IComponent<any>, meta:IComponentMeta,statesSchemaBuilder:TStatesSchemaBuilder, vm:IVNode){
+    let vnode = meta.vnode;
+    if (vnode===undefined){
+        let proxy = createSchemaProxy(meta.statesSchema, vm);
+        templateStack.push(meta.localSchemas);
+        try{
+            vnode = meta.vnode = 
+                typeof component.template==="function"
+                    ? component.template(proxy,statesSchemaBuilder) 
+                    : component.template;
+        }finally{
+            templateStack.pop();
+        }
+    }
+}
+
+function createSchemaProxy(schema, defaultValue?) {
+    if (defaultValue!==undefined) 
+        schema.$schemaDefaultValue = defaultValue;
+    return new Proxy(schema, proxyHandlers);
+}
+
+let templateStack: { [name:string] : Schema }[] = [];
+
+export function local<T>(localSchema?:Schema):T {
+    localSchema || (localSchema = new Schema(undefined));
+    //if(arraySchema) return arraySchema.asArray() as any as T;
+    let context = templateStack.pop();
+    let localName:any = context['$-localvar-name'];
+    if(localName===undefined) localName = context['$-localvar-name'] = 0 as any;
+    localSchema.$schemaScopedName = '$-local-' + localName;
+    context[localSchema.$schemaScopedName] = localSchema;
+    context['$-localvar-name'] = (++localName) as any;
+    templateStack.push(context);
+    return localSchema as any;
+}
+export function localFor<T>(schema:Schema):T {
+    return local<T>(schema.$schemaArrayItem);
+}
+function bindComponentStates(component: IComponent<any>, attrs: { [name: string]:any },scope:Scope){
+    let innerStates = component.$states;
+    for (let attrName in attrs)(function(attrName:string, bindValue, innerStates:Reactive) {
+        if ( bindValue && bindValue["$-schema-proxy-raw"] ) 
+            bindValue = bindValue["$-schema-proxy-raw"];
+        let prop = innerStates[attrName] as Reactive;
+        if (!prop) {
+            let bindVal= bindValue 
+            ? ( bindValue.$reactiveType!==undefined ? bindValue.$reactiveValue : bindValue)
+            : bindValue;
+            prop = innerStates[attrName] = new ConstantReactive(bindVal, attrName);
         }
         
-        if(bindValue instanceof Schema){
-            let bindValueReactive = bindValue.getValueByPath(ownReactives[bindValue.getRootSchema().$reactiveRootName]) as Reactive;
+        if (bindValue instanceof Schema){
+            let bindValueReactive = bindValue.getValueFromScope(scope) as Reactive;
             let handler = (e:IChangeEvent)=>{
-                let propReactive = (states as any)[attrName];
+                let propReactive = (innerStates as any)[attrName];
                 if(propReactive instanceof Reactive){
                     propReactive.update(e.value);
                 }
             };
             //外面的变化后，触发里面的变化
             bindValueReactive.subscribe(handler,component);
-        }else vmProp.$reactiveValue = bindValue;
-    })(attrName,attrs[attrName],states);
+        }else prop.$reactiveValue = bindValue;
+    })(attrName,attrs[attrName],innerStates);
 }
 
 let eventNameRegx = /^on/g;
-function buildElement(tag:string,attrs:{[name:string]:any},children:IVNode[],ownComponent:IComponent<any>):HTMLElement{
-    let states:{[name:string]:Reactive} = ownComponent.$reactives;
-    let elem = document.createElement(tag);
+function createElementNode(descriptor:IVNode, ownComponent:IComponent<any>, scope:Scope):HTMLElement{
+    if(!descriptor.tag) return null;
+    if(!scope) scope = ownComponent.$scope || new Scope();
+
+    let element = document.createElement(descriptor.tag);
+    let attrs = descriptor.attrs;
+    let children = descriptor.children;
+
     for(let attrName  in attrs){
         let attrValue = attrs[attrName];
         //将代理去掉，获取原始的schema
         if(attrValue && attrValue["$-schema-proxy-raw"]) attrValue = attrValue["$-schema-proxy-raw"];
-        
-        let binder = binders[attrName];
-        let state:Reactive;
-        if(attrValue.$schemaType!==undefined){
-            let rootSchema = attrValue.getRootSchema();
-            let rootState = states[rootSchema.$reactiveRootName];
-            state = attrValue.getValueByPath(rootState) as Reactive;
-        }else{
-            if(binder){
-                state = new ConstantReactive(attrValue);
-            }
+        if(eventNameRegx.test(attrName) && element[attrName]===null ){
+            bindEvent(element,attrName,attrValue,ownComponent,scope);
+            continue;
         }
-        if(eventNameRegx.test(attrName) && elem[attrName]===null ){
-            bindEvent(elem,attrName,state||attrValue,ownComponent);
-            break;
-        }
-        if(binder){
-            binder(ownComponent,elem,attrName,state);
-        }else{
-            let propName = attributeConvertNames[attrName]|| attrName;
-            elem[propName] = state?state.get():attrValue;
-            if(state)state.subscribe((e:IChangeEvent)=>{
-                elem[propName] = e.value;
-            },ownComponent);
-        }
+        bindAttr(element,attrName,attrValue,ownComponent,scope);
     }
     if(children)for(const child of children){
         let childElement :HTMLElement;
         if(!child) continue;
         if(child["$-schema-proxy-raw"]) {
-            let c = child["$-schema-proxy-raw"];
-            childElement = buildText(c,ownComponent);
+            childElement = createTextNode(child["$-schema-proxy-raw"], ownComponent, scope);
         }else if((child as Schema).$schemaType!==undefined){
-            childElement = buildText(child as Schema,ownComponent);
-        }else if(child.component){
-            childElement = buildComponent(child.component,child.attrs,children,ownComponent);
+            childElement = createTextNode(child as Schema, ownComponent, scope);
         }else {
-            childElement = buildUI(child,ownComponent);
+            childElement = createElement(child,ownComponent);
         }
         
-        elem.appendChild(childElement);
+        element.appendChild(childElement);
     }
-    return elem;
+    return element;
 }
-function bindEvent(element:HTMLElement,evtName:string,handler:Function|Reactive,ownComponent:IComponent<any>){
+
+function bindAttr(element:HTMLElement,attrName:string, attrValue:any,ownComponent:IComponent<any>,scope:Scope){
+    let binder = binders[attrName];
+    let reactive:Reactive;
+    if(attrValue.$schemaType!==undefined){
+        reactive = attrValue.getValueFromScope(scope) as Reactive;
+    }else{
+        if(binder){
+            reactive = new ConstantReactive(attrValue);
+        }
+    }
+    
+    if(binder){
+        binder(ownComponent,element,attrName,reactive);
+    }else{
+        let propName = attributeConvertNames[attrName] || attrName;
+        element[propName] = reactive?reactive.get():attrValue;
+        if(reactive)reactive.subscribe((e:IChangeEvent)=>{
+            element[propName] = e.value;
+        },ownComponent);
+    }
+}
+
+function bindEvent(element:HTMLElement,evtName:string,handler:Function|Reactive|Schema,ownComponent:IComponent<any>,scope:Scope) {
     element[evtName] = (e)=>{
-        let statesReactive = ownComponent.$reactives[""];
-        let states = statesReactive.get();
-        let evtHandler:Function = (handler as Reactive).$reactiveValue||handler;
-        let newStates= evtHandler.call(ownComponent,states,e);
-        if(newStates===undefined) newStates=states;
+        let func : Function = handler as Function;
+        if( (handler as Schema).$schemaType!==undefined ) {
+            func = (handler as Schema).getValueFromScope(scope);
+        } 
+        if ( (func as any as Reactive).$reactiveType!==undefined ) 
+            func = (func as any as Reactive).$reactiveValue;
+        
+        let statesReactive = ownComponent.$states;
+        let statesData = statesReactive.get();
+        let newStates= func.call(ownComponent,statesData,e);
+        if(newStates===undefined) newStates=statesData;
         statesReactive.update(newStates);
     };
 }
+//<select each={[options,option]} ><option value={option.value}>{option.text}</option></select>
+function bindFor(vnode:IVNode,each:Reactive){
 
-function buildText(bindValue:any,ownComponent:IComponent<any>):HTMLElement{
-    if(bindValue && bindValue.$schemaType!==undefined){
-        let root = bindValue.getRootSchema();
-        let rootReactive = ownComponent.$reactives[root.$reactiveRootName];
-        let reactive = bindValue.getValueByPath(rootReactive) as Reactive;
+}
+
+function buildForItem(itemSchema:Schema,item:Reactive,vnode:IVNode){}
+
+function createTextNode(bindValue:any,ownComponent:IComponent<any>, scope :Scope):HTMLElement{
+    if(!bindValue) return document.createTextNode(bindValue) as any as HTMLElement;
+    let reactive :Reactive;
+    if(bindValue.$schemaType!==undefined){
+        scope || (scope = ownComponent?.$scope);
+        if(!scope) {
+            console.warn(`传入了schema,但却没有ownComponent,使用schema的defaultValue作为内容`);
+            return document.createTextNode(bindValue.$schemaDefaultValue) as any as HTMLElement;
+        }
+        reactive = bindValue.getValueFromScope(scope);
+    } else if (bindValue.$reactiveType!==undefined) {
+        reactive = bindValue
+    }
+    if (reactive) {
         let node = document.createTextNode(reactive.$reactiveValue);
         let handler = (e:IChangeEvent)=>{
             node.nodeValue = e.value;
         };
         reactive.subscribe(handler);
         return node as any as HTMLElement;
-    }else {
+    } else {
         return document.createTextNode(bindValue) as any as HTMLElement;
     }
+
     
 }
 
@@ -845,26 +1173,26 @@ let attributeConvertNames = {
     "class":"className"
 };
 
-export interface IYuiOpts{
+export interface IYaOpts{
     element?:HTMLElement;
     states?:any;
     template?:IVNode;
 }
-export class Yui{
+export class YA{
     $element:HTMLElement;
-    constructor(public opts:IYuiOpts){
+    constructor(public opts:IYaOpts){
         debugger;
-        let elem = this.$element = buildUI(opts.template,this as any);
-        Object.defineProperty(elem,"$yui",{enumerable:false,writable:true,configurable:true,value:this});
+        let elem = this.$element = createElement(opts.template,this as any);
+        constant(false, elem,'$YA',this);
         if(opts.element) {
             opts.element.innerHTML="";
             opts.element.appendChild(elem);
         }
     }
 }
-let YUI:any = Yui;
-YUI.createVNode = createVNode;
-YUI.componentTypes = componentTypes;
-YUI.binders = binders;
+let IYA:any = YA;
+IYA.createVNode = createVNode;
+IYA.componentTypes = componentTypes;
+IYA.binders = binders;
 
-export default globalThis.Yui = YUI;
+export default globalThis.YA = IYA;
