@@ -1,4 +1,4 @@
-import Yui from '../../yui';
+import Yui from '../../YA';
 class MyComponent{
     onkeypress(states,event){
         states.inputText = event.target.value;

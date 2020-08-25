@@ -89,6 +89,40 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
         return text.toString().replace(trimreg, "");
     }
     exports.trim = trim;
+    /**
+     * 判定字符串是否以某个串开始
+     *
+     * @export
+     * @param {*} text 要判定的字符串
+     * @param {*} token 开始标记字符串
+     * @returns {boolean}
+     */
+    function startWith(text, token) {
+        if (!text)
+            return false;
+        if (token === undefined || token === null)
+            return false;
+        return text.toString().indexOf(token.toString()) === 0;
+    }
+    exports.startWith = startWith;
+    /**
+     * 判定字符串是否以某个串结束
+     *
+     * @export
+     * @param {*} text 要检测的字符串
+     * @param {*} token 结束标记字符串
+     * @returns {boolean}
+     */
+    function endWith(text, token) {
+        if (!text)
+            return false;
+        if (token === undefined || token === null)
+            return false;
+        text = text.toString();
+        token = token.toString();
+        return text.indexOf(token) === text.length - token.length;
+    }
+    exports.endWith = endWith;
     var percentRegx = /([+-]?[\d,]+(?:.\d+))%/g;
     /**
      * 是否是百分数
@@ -241,6 +275,18 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
         }
         return name + "{spliter||\"\"}{seed}";
     }
+    var Exception = /** @class */ (function (_super) {
+        __extends(Exception, _super);
+        function Exception(message, infos) {
+            var _this = _super.call(this, message) || this;
+            if (infos)
+                for (var n in infos)
+                    _this[n] = infos[n];
+            return _this;
+        }
+        return Exception;
+    }(Error));
+    exports.Exception = Exception;
     ////////////////////////////////////////////////////////////////////////////////////
     //
     // Fulfill
@@ -250,25 +296,125 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
         FulfillStates[FulfillStates["padding"] = 0] = "padding";
         FulfillStates[FulfillStates["fulfilled"] = 1] = "fulfilled";
         FulfillStates[FulfillStates["rejected"] = 2] = "rejected";
-    })(FulfillStates = exports.FulfillStates || (exports.FulfillStates = {}));
-    var IFulfill = /** @class */ (function () {
-        function IFulfill() {
+    })(FulfillStates || (FulfillStates = {}));
+    var IFulfillInternalData = /** @class */ (function () {
+        function IFulfillInternalData() {
         }
-        return IFulfill;
+        return IFulfillInternalData;
     }());
-    exports.IFulfill = IFulfill;
+    var Thenable = /** @class */ (function () {
+        function Thenable(process) {
+            var _this = this;
+            var status = FulfillStates.padding;
+            var resolveCallbacks = undefined;
+            var rejectCallbacks = undefined;
+            var fulfillValue = undefined;
+            var resolve = function (value) {
+                var _a;
+                if (status !== FulfillStates.padding)
+                    throw new TypeError('已经处于终值状态,不能再调用resolve');
+                if (fulfillValue)
+                    throw new TypeError('已经调用过resolve,传入的是Thenable');
+                if (value === _this)
+                    throw TypeError('不能resolve自己');
+                if (typeof ((_a = value) === null || _a === void 0 ? void 0 : _a.then) === 'function') {
+                    value.then(resolve, reject);
+                    return _this;
+                }
+                if (resolveCallbacks)
+                    setTimeout(function () {
+                        for (var _i = 0, resolveCallbacks_1 = resolveCallbacks; _i < resolveCallbacks_1.length; _i++) {
+                            var handler = resolveCallbacks_1[_i];
+                            handler(fulfillValue);
+                        }
+                    }, 0);
+                return _this;
+            }; //end resolve
+            var reject = function (err) {
+                if (status !== FulfillStates.padding)
+                    throw new TypeError('已经处于终值状态,不能再调用resolve');
+                if (fulfillValue)
+                    throw new TypeError('已经调用过resolve,传入的是Thenable');
+                if (rejectCallbacks)
+                    setTimeout(function () {
+                        for (var _i = 0, rejectCallbacks_1 = rejectCallbacks; _i < rejectCallbacks_1.length; _i++) {
+                            var handler = rejectCallbacks_1[_i];
+                            handler(fulfillValue);
+                        }
+                    }, 0);
+                return this;
+            };
+            implicit(this, 'then', function (resolved, rejected) {
+                if (status === FulfillStates.fulfilled) {
+                    if (resolved)
+                        setTimeout(function () {
+                            resolved(fulfillValue);
+                        }, 0);
+                    return this;
+                }
+                else if (status === FulfillStates.rejected) {
+                    if (rejected)
+                        setTimeout(function () {
+                            rejected(fulfillValue);
+                        }, 0);
+                    return this;
+                }
+                return new Thenable_1(function (nextResolve, nextReject) {
+                    if (resolved) {
+                        if (!resolveCallbacks)
+                            resolveCallbacks = [];
+                        resolveCallbacks.push(function (value) {
+                            var _a;
+                            if (typeof ((_a = value) === null || _a === void 0 ? void 0 : _a.then) === 'function') {
+                                value.then(nextResolve, nextReject);
+                            }
+                            else {
+                                nextResolve(value);
+                            }
+                        });
+                    }
+                    ;
+                    if (!rejectCallbacks)
+                        rejectCallbacks = [];
+                    if (reject) {
+                        rejectCallbacks.push(reject);
+                    }
+                    rejectCallbacks.push(nextReject);
+                });
+            });
+            if (process) {
+                setTimeout(function () {
+                    process(resolve, reject);
+                }, 0);
+            }
+        }
+        Thenable_1 = Thenable;
+        Thenable.prototype.then = function (resolve, reject) {
+            throw 'placehold function';
+        };
+        Thenable.isThenable = function (obj) {
+            var _a;
+            return typeof ((_a = obj) === null || _a === void 0 ? void 0 : _a.then) === 'function';
+        };
+        var Thenable_1;
+        Thenable = Thenable_1 = __decorate([
+            implicit()
+        ], Thenable);
+        return Thenable;
+    }());
+    exports.Thenable = Thenable;
     function disposable(obj) {
         implicit(obj, 'dispose', function (handler) {
             var disposeHandlers = this['$-dispose-handlers'];
             if (disposeHandlers === null)
-                throw new Error("已经被释放，不能再调用dispose");
+                throw new Exception("已经被释放，不能再调用dispose", { 'disposedObject': this });
             if (handler === undefined) {
                 if (disposeHandlers) {
                     for (var _i = 0, disposeHandlers_1 = disposeHandlers; _i < disposeHandlers_1.length; _i++) {
                         var dHandler = disposeHandlers_1[_i];
                         dHandler.call(this);
                     }
-                    constant(false, this, '$-dispose-handlers', undefined);
+                    constant(false, this, '$-dispose-handlers', null);
                 }
             }
             else {
@@ -282,10 +428,20 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
         return obj;
     }
     exports.disposable = disposable;
-    var Subect = /** @class */ (function () {
-        function Subect() {
+    var Disposable = /** @class */ (function () {
+        function Disposable() {
         }
-        Subect.prototype.subscribe = function (topic, listener, refObject) {
+        Disposable.prototype.dispose = function (handler) { return this; };
+        return Disposable;
+    }());
+    exports.Disposable = Disposable;
+    disposable(Disposable.prototype);
+    var Subject = /** @class */ (function (_super) {
+        __extends(Subject, _super);
+        function Subject() {
+            return _super !== null && _super.apply(this, arguments) || this;
+        }
+        Subject.prototype.subscribe = function (topic, listener, refObject) {
             if (listener === undefined) {
                 listener = topic;
                 topic = "";
@@ -297,8 +453,10 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
                 topic = "";
             }
             if (typeof listener !== 'function')
-                throw new Error("subject\u7684lisntener\u5FC5\u987B\u662F\u51FD\u6570");
+                throw new Exception("subject\u7684lisntener\u5FC5\u987B\u662F\u51FD\u6570", { 'listener': listener });
             var topics = this['$-subject-topics'];
+            if (topics === null)
+                throw new Exception('该对象已经被释放', { 'disposedObject': this });
             if (!topics)
                 constant(false, this, '$-subject-topics', topics = this["$-subject-topics"] = {});
             var listeners = topics[topic] || (topics[topic] = []);
@@ -310,7 +468,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
             }
             return this;
         };
-        Subect.prototype.unsubscribe = function (topic, listener) {
+        Subject.prototype.unsubscribe = function (topic, listener) {
             if (listener === undefined) {
                 listener = topic;
                 topic = "";
@@ -322,7 +480,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
             }
             return this;
         };
-        Subect.prototype.notify = function (topic, evt) {
+        Subject.prototype.notify = function (topic, evt) {
             var evts = [];
             for (var _i = 2; _i < arguments.length; _i++) {
                 evts[_i - 2] = arguments[_i];
@@ -359,9 +517,18 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
             }
             return this;
         };
-        return Subect;
-    }());
-    exports.Subect = Subect;
+        Subject.prototype.dispose = function (handler) {
+            if (handler !== undefined) {
+                return _super.prototype.dispose.call(this, handler);
+            }
+            else {
+                constant(false, this, '$-subject-topics', null);
+            }
+            return this;
+        };
+        return Subject;
+    }(Disposable));
+    exports.Subject = Subject;
     var SchemaTypes;
     (function (SchemaTypes) {
         SchemaTypes[SchemaTypes["value"] = 0] = "value";
@@ -512,12 +679,12 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
             this['$-schema-name-paths-from-scoped'] = names.length === 0 ? null : names;
             return names;
         };
-        Schema.prototype.getValueFromScope = function (scope) {
+        Schema.prototype.getValueFromScope = function (scope, schema, initValue, onlyCheckCurrentScope) {
             var names = this.getScopedNamePaths();
             if (!names) {
                 console.warn("\u6CA1\u6709\u627E\u5230scopedName,\u9ED8\u8BA4\u8FD4\u56DEundefined", this, scope);
             }
-            var value = scope.get(names[0]);
+            var value = scope.reactive(names[0], schema, initValue, onlyCheckCurrentScope);
             for (var i = 1, j = names.length; i < j; i++) {
                 value = value[names[i]];
                 if (value === undefined)
@@ -535,6 +702,12 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
         return Schema;
     }());
     exports.Schema = Schema;
+    var ChangeEventTypes;
+    (function (ChangeEventTypes) {
+        ChangeEventTypes[ChangeEventTypes["setted"] = 0] = "setted";
+        ChangeEventTypes[ChangeEventTypes["appended"] = 1] = "appended";
+        ChangeEventTypes[ChangeEventTypes["removed"] = 2] = "removed";
+    })(ChangeEventTypes = exports.ChangeEventTypes || (exports.ChangeEventTypes = {}));
     var Reactive = /** @class */ (function (_super) {
         __extends(Reactive, _super);
         function Reactive(ownOrValue, schema, name, scope) {
@@ -562,6 +735,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
                 '$reactiveType': schema ? schema.$schemaType : SchemaTypes.value,
                 '$reactiveScope': scope
             });
+            // Reactive作为第一个参数，是不做类型检查，用于constantReactive等
             if (ownOrValue === Reactive_1) {
                 implicit(_this, '$reactiveValue', value);
                 return _this;
@@ -569,6 +743,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
             if (schema.$schemaType === SchemaTypes.object) {
                 if (typeof value !== "object")
                     value = {};
+                implicit(_this, '$reactiveValue', value);
                 for (var n in schema) {
                     var fc = n[0];
                     if (n === "constructor" || fc === "$" || fc === "_" || fc === "-")
@@ -580,6 +755,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
             else if (schema.$schemaType === SchemaTypes.array) {
                 if (typeof value !== "object")
                     value = [];
+                implicit(_this, '$reactiveValue', value);
                 for (var i = 0, j = value.length; i < j; i++) {
                     var itemReacitve = new Reactive_1(_this, schema.$schemaArrayItem, i);
                     _this[i] = itemReacitve;
@@ -596,11 +772,13 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
                 var lengthReactive = new Reactive_1(_this, schema.length);
                 constant(false, _this, 'length', lengthReactive);
             }
-            implicit(_this, '$reactiveValue', value);
+            else {
+                implicit(_this, '$reactiveValue', value);
+            }
             return _this;
         }
         Reactive_1 = Reactive;
-        Reactive.prototype.update = function (value, src) {
+        Reactive.prototype.update = function (value, src, changeType) {
             var schemaType = this.$reactiveSchema.$schemaType;
             if (schemaType === SchemaTypes.object) {
                 updateObject(this, value, src);
@@ -617,7 +795,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
                     this.$reactiveOwn.$reactiveValue[this.$reactiveName] = value;
                 }
                 this.notify("", {
-                    value: value, old: old, src: src || this, sender: this
+                    type: changeType === undefined ? ChangeEventTypes.setted : changeType, value: value, old: old, src: src || this, sender: this
                 });
             }
             return this;
@@ -651,7 +829,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
             implicit()
         ], Reactive);
         return Reactive;
-    }(Subect));
+    }(Subject));
     exports.Reactive = Reactive;
     var ConstantReactive = /** @class */ (function (_super) {
         __extends(ConstantReactive, _super);
@@ -676,6 +854,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
         };
         ConstantReactive.prototype.get = function () { return this.$reactiveValue; };
         ConstantReactive.prototype.update = function (value) {
+            debugger;
             console.warn("\u5728ConstantReactive\u4E0A\u8C03\u7528\u4E86update\u64CD\u4F5C,\u5FFD\u7565\u3002", this, value);
             return this;
         };
@@ -693,13 +872,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
             reactive.$reactiveOwn.$reactiveValue[reactive.$reactiveName] = value;
         }
         var event = {
-            value: value, old: old, sender: reactive, src: src || reactive
+            type: ChangeEventTypes.setted, value: value, old: old, sender: reactive, src: src || reactive
         };
-        if (old !== value) {
-            reactive.notify(event);
-            if (event.cancel)
-                return reactive;
-        }
         var keys = Object.keys(value);
         for (var _i = 0, keys_1 = keys; _i < keys_1.length; _i++) {
             var n = keys_1[_i];
@@ -717,9 +891,6 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
         if (reactive.$reactiveOwn) {
             reactive.$reactiveOwn.$reactiveValue[reactive.$reactiveName] = value;
         }
-        var event = {
-            value: value, old: old, src: src || reactive, sender: reactive
-        };
         var lengthReactive = reactive.length;
         var oldLength = lengthReactive.$reactiveValue;
         var newLength = value.length;
@@ -737,21 +908,24 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
                 delete reactive[i];
             }
         }
-        for (var i = oldLength, j = newLength - oldLength; i < j; i++) {
+        for (var i = oldLength, j = newLength; i < j; i++) {
             var newItemReactive = new Reactive(reactive, reactive.$reactiveSchema.$schemaArrayItem, i);
             reactive[i] = newItemReactive;
             appends.push({ value: value[i], reactive: newItemReactive, index: i });
         }
-        event.appends = appends.length ? appends : null;
-        event.removes = removes.length ? removes : null;
-        event.updates = updates.length ? updates : null;
-        if (value !== old || appends.length || removes.length) {
-            reactive.notify(event);
-            if (event.cancel)
-                return reactive;
+        if (appends.length) {
+            var event_1 = {
+                type: ChangeEventTypes.appended, value: value, old: old, src: src || reactive,
+                appends: appends, sender: reactive
+            };
+            reactive.notify(event_1);
         }
-        for (var _i = 0, updates_1 = updates; _i < updates_1.length; _i++) {
-            var item = updates_1[_i];
+        for (var _i = 0, removes_1 = removes; _i < removes_1.length; _i++) {
+            var item = removes_1[_i];
+            item.reactive.update(undefined, event, ChangeEventTypes.removed);
+        }
+        for (var _a = 0, updates_1 = updates; _a < updates_1.length; _a++) {
+            var item = updates_1[_a];
             item.reactive.update(item.value, event);
         }
     }
@@ -762,22 +936,27 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
             constant(false, this, '$-scope-parent', parent);
         }
         Scope_1 = Scope;
-        Scope.prototype.reactive = function (name, schema, initValue) {
+        Scope.prototype.reactive = function (name, schema, initValue, onlyCheckCurrentScope) {
             var reactive;
             if (schema === undefined) {
-                reactive = this[name];
+                var scope = this;
+                while (scope) {
+                    if (reactive = scope[name])
+                        break;
+                    if (onlyCheckCurrentScope)
+                        break;
+                    scope = scope['$-scope-parent'];
+                }
             }
             if (!reactive) {
                 reactive = new Reactive(initValue, schema, undefined, this);
                 this[name] = reactive;
             }
+            else {
+                if (initValue !== undefined)
+                    reactive.update(initValue);
+            }
             return reactive;
-        };
-        Scope.prototype.get = function (name) {
-            if (this[name] != null)
-                return this[name];
-            if (this['$-scope-parent'])
-                return this['$-scope-parent'].get(name);
         };
         Scope.prototype.createScope = function () {
             return new Scope_1(this);
@@ -797,6 +976,13 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
                 }
             }
         };
+        Scope.prototype.dispose = function () {
+            for (var n in this) {
+                var reactive = this[n];
+                if (typeof reactive.dispose === 'function')
+                    reactive.dispose();
+            }
+        };
         var Scope_1;
         Scope = Scope_1 = __decorate([
             implicit()
@@ -804,7 +990,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
         return Scope;
     }());
     exports.Scope = Scope;
-    function _createVNode(tag, attrs) {
+    function _createNodeDescriptor(tag, attrs) {
         var vnode = {};
         var tagType = typeof tag;
         if (tagType === "string")
@@ -829,8 +1015,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
         vnode.children = children;
         return vnode;
     }
-    exports.createVNode = _createVNode;
-    globalThis.createVNode = exports.createVNode;
+    exports.createNodeDescriptor = _createNodeDescriptor;
+    globalThis.createVNode = exports.createNodeDescriptor;
     var proxyHandlers = {
         get: function (obj, name) {
             if (name === '$-schema-proxy-raw')
@@ -846,7 +1032,18 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
             return value;
         }
     };
-    function createElement(descriptor, ownComponent, scope) {
+    function createElement(descriptor, ownComponent, scope, ignoreDirective) {
+        if (!scope) {
+            if (ownComponent)
+                scope = ownComponent.$scope;
+            else
+                scope = new Scope();
+        }
+        if (!ignoreDirective) {
+            var elem = createIterationNodes(descriptor, ownComponent, scope);
+            if (elem)
+                return elem;
+        }
         var element = createComponentNode(descriptor, ownComponent, scope);
         if (!element) {
             element = createElementNode(descriptor, ownComponent, scope);
@@ -854,6 +1051,72 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
                 element = createTextNode(descriptor.content, ownComponent, scope);
         }
         return element;
+    }
+    /**
+     * 创建迭代for-each,for-as
+     *
+     * @param {INodeDescriptor} descriptor
+     * @param {IComponent<any>} [ownComponent]
+     * @param {Scope} [scope]
+     */
+    function createIterationNodes(descriptor, ownComponent, scope) {
+        //没有属性，肯定不是迭代
+        var attrs = descriptor.attrs;
+        if (!attrs)
+            return undefined;
+        var each = attrs['for-each'];
+        if (!each)
+            return undefined;
+        if (each["$-schema-proxy-raw"])
+            each = each["$-schema-proxy-raw"];
+        if (!each)
+            return undefined;
+        var itemSchema = attrs['for-as'];
+        if (!itemSchema)
+            throw new Exception('没找到for-as', { 'nodeDescriptor': descriptor, 'ownComponent': ownComponent });
+        if (itemSchema["$-schema-proxy-raw"])
+            itemSchema = itemSchema["$-schema-proxy-raw"];
+        if (!itemSchema.$schemaType)
+            throw new Exception('for-as 必须是Scheme,请用YA.for/YA.local创建循环变量', { 'nodeDescriptor': descriptor, 'ownComponent': ownComponent });
+        var anchor = document.createComment('for-each/as anchor node');
+        setTimeout(function () {
+            var eachReactive = each;
+            if (eachReactive.$schemaType !== undefined)
+                eachReactive = each.getValueFromScope(scope);
+            renderIteration(descriptor, ownComponent, eachReactive, itemSchema, anchor, scope);
+        }, 0);
+        return anchor;
+    }
+    function renderIteration(descriptor, ownComponent, eachReactive, asSchema, anchor, eachScope) {
+        for (var n in eachReactive) {
+            var itemReactive = eachReactive[n];
+            renderIterationItem(descriptor, ownComponent, itemReactive, asSchema, anchor, eachScope);
+        }
+        if (eachReactive.$reactiveType !== undefined) {
+            eachReactive.subscribe(function (e) {
+                debugger;
+                if (!e.appends)
+                    return;
+                for (var _i = 0, _a = e.appends; _i < _a.length; _i++) {
+                    var appendItem = _a[_i];
+                    renderIterationItem(descriptor, ownComponent, appendItem.reactive, asSchema, anchor, eachScope);
+                }
+            }, ownComponent);
+        }
+    }
+    function renderIterationItem(descriptor, ownComponent, itemReactive, asSchema, anchor, eachScope) {
+        var itemScope = eachScope.createScope();
+        itemScope[asSchema.$schemaScopedName] = itemReactive;
+        debugger;
+        var elem = createElement(descriptor, ownComponent, itemScope, true);
+        anchor.parentElement.insertBefore(elem, anchor);
+        itemReactive.subscribe(function (e) {
+            if (e.type === ChangeEventTypes.removed) {
+                if (elem.parentNode)
+                    elem.parentElement.removeChild(elem);
+            }
+        }, ownComponent);
+        return elem;
     }
     function createComponentNode(descriptor, ownComponent, scope) {
         var componentFunc;
@@ -1022,7 +1285,10 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
         var attrs = descriptor.attrs;
         var children = descriptor.children;
         for (var attrName in attrs) {
+            if (attrName === 'for-each' || attrName === 'for-as' || attrName === 'if' || attrName === 'if-not')
+                continue;
             var attrValue = attrs[attrName];
+            //if(attrName[0])
             //将代理去掉，获取原始的schema
             if (attrValue && attrValue["$-schema-proxy-raw"])
                 attrValue = attrValue["$-schema-proxy-raw"];
@@ -1090,8 +1356,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
             statesReactive.update(newStates);
         };
     }
-    //<select each={[options,option]} ><option value={option.value}>{option.text}</option></select>
-    function bindFor(vnode, each) {
+    //<select><option for={{each: options, as: option }} value={option.value}>{option.text}</option></select>
+    function makeFor(anchorElement, vnode, each, item, scope) {
     }
     function buildForItem(itemSchema, item, vnode) { }
     function createTextNode(bindValue, ownComponent, scope) {
@@ -1158,7 +1424,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     var YA = /** @class */ (function () {
         function YA(opts) {
             this.opts = opts;
-            debugger;
+            this.$scope = new Scope();
             var elem = this.$element = createElement(opts.template, this);
             constant(false, elem, '$YA', this);
             if (opts.element) {
@@ -1170,9 +1436,10 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     }());
     exports.YA = YA;
     var IYA = YA;
-    IYA.createVNode = exports.createVNode;
+    IYA.createNodeDescriptor = exports.createNodeDescriptor;
+    IYA.localFor = localFor;
     IYA.componentTypes = exports.componentTypes;
     IYA.binders = exports.binders;
     exports.default = globalThis.YA = IYA;
 });
-//# sourceMappingURL=yui.js.map
+//# sourceMappingURL=YA.js.map

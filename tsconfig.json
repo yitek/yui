@@ -11,7 +11,7 @@
         "declaration":true   ,
         "removeComments":false,
         "jsx":"react",
-        "jsxFactory":"Yui.createVNode",
+        "jsxFactory":"Yui.createNodeDescriptor",
         "experimentalDecorators":true
         //"outFile": "lib/require.js"
     },

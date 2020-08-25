@@ -4,12 +4,12 @@
         if (v !== undefined) module.exports = v;
     }
     else if (typeof define === "function" && define.amd) {
-        define(["require", "exports", "../yui"], factory);
+        define(["require", "exports", "../YA"], factory);
     }
 })(function (require, exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    var yui = require("../yui");
+    var yui = require("../YA");
     var vm = {
         pageIndex: 1,
         pageSize: 5,

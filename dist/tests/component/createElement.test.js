@@ -4,16 +4,16 @@
         if (v !== undefined) module.exports = v;
     }
     else if (typeof define === "function" && define.amd) {
-        define(["require", "exports", "../../yui"], factory);
+        define(["require", "exports", "../../YA"], factory);
     }
 })(function (require, exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    var yui_1 = require("../../yui");
+    var YA_1 = require("../../YA");
     debugger;
-    var app = new yui_1.default({
+    var app = new YA_1.default({
         element: document.body,
-        template: yui_1.default.createVNode("div", { class: "css", style: { color: "red" } }, "Hello Yui.")
+        template: YA_1.default.createNodeDescriptor("div", { class: "css", style: { color: "red" } }, "Hello Yui.")
     });
 });
 //# sourceMappingURL=createElement.test.js.map

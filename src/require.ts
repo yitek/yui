@@ -194,7 +194,9 @@ class Uri implements IRequireUri{
         }
         
         let name = names[names.length-1];
-        if(name.lastIndexOf(".js")!==name.length-3) name += ".js";
+        if(name.length<4 || name.lastIndexOf(".js")!==name.length-3) {
+            name += ".js";
+        }
         this.filename = name;
         if(paths.length) this.url = paths.join("/") + "/" + name;
         else this.url = name;
@@ -287,6 +289,7 @@ class Resource implements IRequireResource {
 }
 makeState(Resource.prototype,["loaded","error"],"error");
 
+
 class ScriptResource extends Resource{
     constructor(uri:Uri){
         super(uri);
@@ -296,6 +299,7 @@ class ScriptResource extends Resource{
         let elem = document.createElement("script") as HTMLScriptElement;
         elem.type="text/javascript";
         elem.src = url;
+        if(define.trace===true || define.trace==='element') console.info('创建脚本资源元素',elem.src);
         return elem;
     }
 }
@@ -309,6 +313,7 @@ class StylesheetResource extends Resource{
         let elem = document.createElement("link") as HTMLLinkElement;
         elem.type="text/css";
         elem.href = url;
+        if(define.trace===true || define.trace ==='element') console.info('创建试样表资源元素',elem.href);
         elem.rel = "stylesheet";
         return elem;
     }

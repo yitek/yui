@@ -1,4 +1,4 @@
-import Yui from '../../yui';
+import Yui from '../../YA';
 debugger;
 let app = new Yui({
     element:document.body,

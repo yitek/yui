@@ -1,4 +1,4 @@
-import * as yui from '../yui';
+import * as yui from '../YA';
 let vm ={
     pageIndex:1,
     pageSize:5,
