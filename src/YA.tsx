@@ -214,7 +214,7 @@ export function constant(enumerable?:boolean,target?,name?,value?){
 }
 
 let cidSeeds : {[name:string]: number} = {};
-function cid(name?:string,spliter?):string{
+function cid(name?:string):string{
     if (name===undefined) name = "cid";
     let seed = cidSeeds[name];
     if (seed===undefined) seed = cidSeeds[name] = 0;
@@ -222,7 +222,7 @@ function cid(name?:string,spliter?):string{
         seed = -2100000000;
         cidSeeds[name] = seed;
     } 
-    return `${name}{spliter||""}{seed}`;
+    return `${name}${seed}`;
 }
 
 export class Exception extends Error{
@@ -447,7 +447,7 @@ export class Subject extends Disposable {
 }
 
 export enum SchemaTypes{
-    value,object,array
+    value,object,array,computed
 }
 @implicit()
 export class Schema{
@@ -611,12 +611,12 @@ export class Schema{
         return names;
     }
 
-    getValueFromScope(scope:Scope,schema?:Schema,initValue?:any, onlyCheckCurrentScope?:boolean):any {
+    getValueFromScope(scope:Scope,schema?:Schema|IDisposable,initValue?:any, onlyCheckCurrentScope?:boolean):any {
         let names = this.getScopedNamePaths();
         if (!names) {
             console.warn(`没有找到scopedName,默认返回undefined`, this, scope);
         }
-        let value = scope.reactive(names[0],schema,initValue, onlyCheckCurrentScope);
+        let value = scope.reactive(names[0],!schema|| (schema as Schema).$schemaType===undefined?undefined:schema as Schema,initValue, onlyCheckCurrentScope);
         for (let i=1 ,j=names.length; i<j;i++) {
             value = value[names[i]];
             if(value===undefined) return value;
@@ -627,6 +627,84 @@ export class Schema{
     createReactive(ownOrValue?):Reactive{
         return new Reactive(ownOrValue,this);
     }
+}
+@implicit()
+export class ComputedSchema{
+    $schemaType:SchemaTypes;
+    $schemaFunc:Function;
+    $schemaDependences:Schema[];
+    constructor(func:Function, deps:Schema[]){
+        implicit(this,{
+            '$schemaType':SchemaTypes.computed,
+            '$schemaFunc':func,
+            '$schemaDependences':deps
+        });
+    }
+    getValueFromScope(scope:Scope,own?:IDisposable){
+        return new ComputedReactive(this,scope,own);
+    }
+}
+export function computed(){
+    let deps = [];
+    for(let i=0,j=arguments.length-1; i<j; i++){
+        deps.push(arguments[i]);
+    }
+    let func = arguments[arguments.length-1];
+    return new ComputedSchema(func,deps);
+}
+@implicit()
+export class ComputedReactive extends Subject {
+    $reactiveType: SchemaTypes;
+    $reactiveDependences:Reactive[];
+    $reactiveSchema:ComputedSchema;
+    $reactiveScope:Scope;
+    $reactiveValue:any;
+    constructor(schema:ComputedSchema,scope:Scope,own?:IDisposable){
+        super();
+        let deps = [];
+        let args=[];
+        for(const depSchema of schema.$schemaDependences){
+            let depReactive = depSchema.getValueFromScope(scope,own);
+            deps.push(depReactive);
+            args.push(depReactive.$reactiveValue);
+            depReactive.subscribe((e)=>{
+                this.get(e);
+            },own);
+        }
+        let value;
+        try{
+            value = schema.$schemaFunc.apply(this,args);
+        }catch(ex){
+            console.warn('计算表达式无法正常完成',this,args);
+        }
+        implicit(this,{
+            '$reactiveType': SchemaTypes.computed,
+            '$reactiveDependences': deps,
+            '$reactiveSchema':schema,
+            '$reactiveScope': scope,
+            '$reactiveValue':value
+        });
+    }
+    get(src?){
+        let args = [];
+        for(const depReactive of this.$reactiveDependences){
+            args.push(depReactive.get());
+        }
+        let newValue;
+        try{
+            newValue = this.$reactiveSchema.$schemaFunc.apply(this,args);
+        }catch(ex){
+            console.warn('计算表达式无法正常完成',this,args);
+        }
+        let oldValue = this.$reactiveValue;
+        if(oldValue!==newValue){
+            this.$reactiveValue = newValue;
+            let evt = {type:ChangeEventTypes.setted,src:src,sender:this,value:newValue,old:oldValue};
+            this.notify('',evt);
+        }
+        return newValue;
+    }
+    
 }
 
 
@@ -869,8 +947,10 @@ function updateArray(reactive:Reactive, value, src) {
 export class Scope{
     '$-scope-root'? : Scope;
     '$-scope-parent' : Scope;
-    constructor(parent?:Scope){
+    '$-scope-name': string;
+    constructor(parent?:Scope,name?:string){
         constant(false,this,'$-scope-parent',parent);
+        constant(false,this,'$-scope-name',name);
     }
     reactive(name:string, schema:Schema, initValue?, onlyCheckCurrentScope?:boolean):Reactive{
         let reactive:Reactive;
@@ -892,8 +972,8 @@ export class Scope{
     }
 
     
-    createScope():Scope{
-        return new Scope(this);
+    createScope(name?:string):Scope{
+        return new Scope(this,name);
     }
     rootScope():Scope{
         let root = this['$-scope-root'];
@@ -915,6 +995,8 @@ export class Scope{
         }
     }
 }
+
+
 
 ///////////////////////////////////////////////////////////////////////////
 //VNode
@@ -1049,7 +1131,7 @@ function createIterationNodes(descriptor:INodeDescriptor, ownComponent?:ICompone
     
     setTimeout(()=>{
         let eachReactive = each;
-        if(eachReactive.$schemaType!==undefined) eachReactive = each.getValueFromScope(scope)
+        if(eachReactive.$schemaType!==undefined) eachReactive = each.getValueFromScope(scope,ownComponent)
         renderIteration(descriptor,ownComponent,eachReactive,itemSchema,anchor,scope);
     }, 0);
     return anchor as any as HTMLElement;
@@ -1062,7 +1144,6 @@ function renderIteration(descriptor:INodeDescriptor,ownComponent:IComponent<any>
     }
     if (eachReactive.$reactiveType!==undefined){
         eachReactive.subscribe((e:IArrayChangeEvent)=>{
-            debugger
             if(!e.appends) return;
             for(const appendItem of e.appends){
                 renderIterationItem(descriptor,ownComponent,appendItem.reactive,asSchema,anchor,eachScope);
@@ -1072,9 +1153,8 @@ function renderIteration(descriptor:INodeDescriptor,ownComponent:IComponent<any>
 }
 
 function renderIterationItem(descriptor:INodeDescriptor,ownComponent:IComponent<any>,itemReactive,asSchema : Schema,anchor:HTMLElement,eachScope:Scope){
-    let itemScope = eachScope.createScope();
+    let itemScope = eachScope.createScope(asSchema.$schemaScopedName);
     itemScope[asSchema.$schemaScopedName] = itemReactive;
-    debugger
     let elem = createElement(descriptor, ownComponent,itemScope, true);
     anchor.parentElement.insertBefore(elem,anchor);
     itemReactive.subscribe((e:IChangeEvent)=>{
@@ -1122,7 +1202,7 @@ function newComponent(
             constant(false, template,'$-component-type', componentType);
             constant(false, componentType,'$-component-template', template);
         }
-    }else componentType = componentFunc as TComponentCtor;
+    } else componentType = componentFunc as TComponentCtor;
     
     let meta:IComponentMeta = componentType.prototype.$meta;
     if(!meta) {
@@ -1135,14 +1215,14 @@ function newComponent(
     let component:IComponent<any> = new componentType(statesSchemaBuilder||function(){});
     constant(false,component,'$ownComponent', ownComponent);
     sureTagAndIds(component, meta, componentType);
-    sureVNode(component, meta, statesSchemaBuilder, vm);
+    sureNodeDescriptor(component, meta, statesSchemaBuilder, vm);
     
     if (!component.dispose) { disposable(component); }
     
 
     scope || (scope = ownComponent?.$scope);
     
-    let componentScope =  scope ? scope.createScope() : new Scope();
+    let componentScope =  scope ? scope.createScope(component.$tag+cid("@CS")) : new Scope();
     constant(false, component,'$scope',componentScope);
     constant(false, component,'$states',componentScope.reactive('states',meta.statesSchema, vm));
    
@@ -1171,6 +1251,7 @@ function sureTagAndIds(compInstance:IComponent<any>, meta:IComponentMeta, compon
     if(!tag) {
         tag = meta.tag || (meta.tag = cid('ya-component-type-'));
         constant(false,compInstance,'$tag',tag);
+        constant(false,componentType.prototype,'$tag',tag);
     }
     let existed = componentTypes[tag];
     if(existed){
@@ -1180,10 +1261,10 @@ function sureTagAndIds(compInstance:IComponent<any>, meta:IComponentMeta, compon
         } 
     }else componentTypes[tag] = componentType;
 
-    constant(false,compInstance, '$cid',  cid(tag,'#'));
+    constant(false,compInstance, '$cid',  cid(tag+'@'));
 }
 
-function sureVNode(component:IComponent<any>, meta:IComponentMeta,statesSchemaBuilder:TStatesSchemaBuilder, vm:INodeDescriptor){
+function sureNodeDescriptor(component:IComponent<any>, meta:IComponentMeta,statesSchemaBuilder:TStatesSchemaBuilder, vm:INodeDescriptor){
     let vnode = meta.vnode;
     if (vnode===undefined){
         let proxy = createSchemaProxy(meta.statesSchema, vm);
@@ -1207,20 +1288,29 @@ function createSchemaProxy(schema, defaultValue?) {
 
 let templateStack: { [name:string] : Schema }[] = [];
 
-export function local<T>(localSchema?:Schema):T {
+export function local<T>(localSchema?:Schema,name?:string):T {
     localSchema || (localSchema = new Schema(undefined));
     //if(arraySchema) return arraySchema.asArray() as any as T;
     let context = templateStack.pop();
-    let localName:any = context['$-localvar-name'];
-    if(localName===undefined) localName = context['$-localvar-name'] = 0 as any;
-    localSchema.$schemaScopedName = '$-local-' + localName;
-    context[localSchema.$schemaScopedName] = localSchema;
-    context['$-localvar-name'] = (++localName) as any;
+    let localVarName:string;
+    if(name) {
+        localVarName = name + cid('@LVN');
+    }else{
+        let localVarNo:any = context['$-localvar-no'];
+        if(localVarNo===undefined) localVarNo = context['$-localvar-no'] = 0 as any;
+        
+        localVarName = '$-local-' + localVarNo;
+        context['$-localvar-no'] = (++localVarNo) as any;
+    }
+    localSchema.$schemaScopedName = localVarName;
+    context[localVarName] = localSchema;
+    
     templateStack.push(context);
     return localSchema as any;
 }
-export function localFor<T>(schema:Schema):T {
-    return local<T>(schema.$schemaArrayItem);
+
+export function localFor<T>(schema:Schema,name?:string):T {
+    return local<T>(schema.$schemaArrayItem,name);
 }
 function bindComponentStates(component: IComponent<any>, attrs: { [name: string]:any },scope:Scope){
     let innerStates = component.$states;
@@ -1236,7 +1326,7 @@ function bindComponentStates(component: IComponent<any>, attrs: { [name: string]
         }
         
         if (bindValue instanceof Schema){
-            let bindValueReactive = bindValue.getValueFromScope(scope) as Reactive;
+            let bindValueReactive = bindValue.getValueFromScope(scope,component) as Reactive;
             let handler = (e:IChangeEvent)=>{
                 let propReactive = (innerStates as any)[attrName];
                 if(propReactive instanceof Reactive){
@@ -1250,9 +1340,8 @@ function bindComponentStates(component: IComponent<any>, attrs: { [name: string]
 }
 
 let eventNameRegx = /^on/g;
-function createElementNode(descriptor:INodeDescriptor, ownComponent:IComponent<any>, scope:Scope):HTMLElement{
+function createElementNode(descriptor:INodeDescriptor, ownComponent:IComponent<any>, scope:Scope):HTMLElement {
     if(!descriptor.tag) return null;
-    if(!scope) scope = ownComponent.$scope || new Scope();
 
     let element = document.createElement(descriptor.tag);
     let attrs = descriptor.attrs;
@@ -1278,7 +1367,7 @@ function createElementNode(descriptor:INodeDescriptor, ownComponent:IComponent<a
         }else if((child as Schema).$schemaType!==undefined){
             childElement = createTextNode(child as Schema, ownComponent, scope);
         }else {
-            childElement = createElement(child,ownComponent);
+            childElement = createElement(child,ownComponent,scope);
         }
         
         element.appendChild(childElement);
@@ -1290,7 +1379,7 @@ function bindAttr(element:HTMLElement,attrName:string, attrValue:any,ownComponen
     let binder = binders[attrName];
     let reactive:Reactive;
     if(attrValue.$schemaType!==undefined){
-        reactive = attrValue.getValueFromScope(scope) as Reactive;
+        reactive = attrValue.getValueFromScope(scope,ownComponent) as Reactive;
     }else{
         if(binder){
             reactive = new ConstantReactive(attrValue);
@@ -1312,7 +1401,7 @@ function bindEvent(element:HTMLElement,evtName:string,handler:Function|Reactive|
     element[evtName] = (e)=>{
         let func : Function = handler as Function;
         if( (handler as Schema).$schemaType!==undefined ) {
-            func = (handler as Schema).getValueFromScope(scope);
+            func = (handler as Schema).getValueFromScope(scope,ownComponent);
         } 
         if ( (func as any as Reactive).$reactiveType!==undefined ) 
             func = (func as any as Reactive).$reactiveValue;
@@ -1340,7 +1429,7 @@ function createTextNode(bindValue:any,ownComponent:IComponent<any>, scope :Scope
             console.warn(`传入了schema,但却没有ownComponent,使用schema的defaultValue作为内容`);
             return document.createTextNode(bindValue.$schemaDefaultValue) as any as HTMLElement;
         }
-        reactive = bindValue.getValueFromScope(scope);
+        reactive = bindValue.getValueFromScope(scope,ownComponent);
     } else if (bindValue.$reactiveType!==undefined) {
         reactive = bindValue
     }
@@ -1396,6 +1485,7 @@ let attributeConvertNames = {
 
 export interface IYaOpts{
     element?:HTMLElement;
+    name?:string;
     states?:any;
     template?:INodeDescriptor;
 }
@@ -1403,8 +1493,8 @@ export class YA{
     $element:HTMLElement;
     $scope:Scope;
     constructor(public opts:IYaOpts){
-        this.$scope = new Scope();
-        let elem = this.$element = createElement(opts.template,this as any);
+        this.$scope = new Scope(undefined , opts.name || 'root');
+        let elem = this.$element = createElement(opts.template,this as any,this.$scope, true);
         constant(false, elem,'$YA',this);
         if(opts.element) {
             opts.element.innerHTML="";
@@ -1417,5 +1507,6 @@ IYA.createNodeDescriptor = createNodeDescriptor;
 IYA.localFor = localFor;
 IYA.componentTypes = componentTypes;
 IYA.binders = binders;
+IYA.computed = computed;
 
 export default globalThis.YA = IYA;

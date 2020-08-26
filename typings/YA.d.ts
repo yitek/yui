@@ -100,7 +100,8 @@ export declare class Subject extends Disposable {
 export declare enum SchemaTypes {
     value = 0,
     object = 1,
-    array = 2
+    array = 2,
+    computed = 3
 }
 export declare class Schema {
     $schemaName: string;
@@ -130,8 +131,25 @@ export declare class Schema {
     getValueFromRoot(target: any): any;
     getScopedSchema(): Schema;
     getScopedNamePaths(): string[];
-    getValueFromScope(scope: Scope, schema?: Schema, initValue?: any, onlyCheckCurrentScope?: boolean): any;
+    getValueFromScope(scope: Scope, schema?: Schema | IDisposable, initValue?: any, onlyCheckCurrentScope?: boolean): any;
     createReactive(ownOrValue?: any): Reactive;
+}
+export declare class ComputedSchema {
+    $schemaType: SchemaTypes;
+    $schemaFunc: Function;
+    $schemaDependences: Schema[];
+    constructor(func: Function, deps: Schema[]);
+    getValueFromScope(scope: Scope, own?: IDisposable): ComputedReactive;
+}
+export declare function computed(): ComputedSchema;
+export declare class ComputedReactive extends Subject {
+    $reactiveType: SchemaTypes;
+    $reactiveDependences: Reactive[];
+    $reactiveSchema: ComputedSchema;
+    $reactiveScope: Scope;
+    $reactiveValue: any;
+    constructor(schema: ComputedSchema, scope: Scope, own?: IDisposable);
+    get(src?: any): any;
 }
 export interface IChangeItem {
     index: number;
@@ -178,9 +196,10 @@ export declare class ConstantReactive extends Reactive {
 export declare class Scope {
     '$-scope-root'?: Scope;
     '$-scope-parent': Scope;
-    constructor(parent?: Scope);
+    '$-scope-name': string;
+    constructor(parent?: Scope, name?: string);
     reactive(name: string, schema: Schema, initValue?: any, onlyCheckCurrentScope?: boolean): Reactive;
-    createScope(): Scope;
+    createScope(name?: string): Scope;
     rootScope(): Scope;
     dispose(): void;
 }
@@ -226,8 +245,8 @@ export interface IComponent<T> extends IDisposable {
     render?(element: HTMLElement, vm: any): HTMLElement;
     refresh(states: T): IComponent<T>;
 }
-export declare function local<T>(localSchema?: Schema): T;
-export declare function localFor<T>(schema: Schema): T;
+export declare function local<T>(localSchema?: Schema, name?: string): T;
+export declare function localFor<T>(schema: Schema, name?: string): T;
 export declare let binders: {
     [name: string]: (ownComponent: IComponent<any>, element: HTMLElement, attrName: string, reactive: Reactive) => any;
 };
@@ -238,6 +257,7 @@ export declare let componentTypes: {
 };
 export interface IYaOpts {
     element?: HTMLElement;
+    name?: string;
     states?: any;
     template?: INodeDescriptor;
 }

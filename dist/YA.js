@@ -263,7 +263,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     }
     exports.constant = constant;
     var cidSeeds = {};
-    function cid(name, spliter) {
+    function cid(name) {
         if (name === undefined)
             name = "cid";
         var seed = cidSeeds[name];
@@ -273,7 +273,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
             seed = -2100000000;
             cidSeeds[name] = seed;
         }
-        return name + "{spliter||\"\"}{seed}";
+        return "" + name + seed;
     }
     var Exception = /** @class */ (function (_super) {
         __extends(Exception, _super);
@@ -534,6 +534,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
         SchemaTypes[SchemaTypes["value"] = 0] = "value";
         SchemaTypes[SchemaTypes["object"] = 1] = "object";
         SchemaTypes[SchemaTypes["array"] = 2] = "array";
+        SchemaTypes[SchemaTypes["computed"] = 3] = "computed";
     })(SchemaTypes = exports.SchemaTypes || (exports.SchemaTypes = {}));
     var Schema = /** @class */ (function () {
         function Schema(defaultValue, ownSchema, name) {
@@ -684,7 +685,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
             if (!names) {
                 console.warn("\u6CA1\u6709\u627E\u5230scopedName,\u9ED8\u8BA4\u8FD4\u56DEundefined", this, scope);
             }
-            var value = scope.reactive(names[0], schema, initValue, onlyCheckCurrentScope);
+            var value = scope.reactive(names[0], !schema || schema.$schemaType === undefined ? undefined : schema, initValue, onlyCheckCurrentScope);
             for (var i = 1, j = names.length; i < j; i++) {
                 value = value[names[i]];
                 if (value === undefined)
@@ -702,6 +703,90 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
         return Schema;
     }());
     exports.Schema = Schema;
+    var ComputedSchema = /** @class */ (function () {
+        function ComputedSchema(func, deps) {
+            implicit(this, {
+                '$schemaType': SchemaTypes.computed,
+                '$schemaFunc': func,
+                '$schemaDependences': deps
+            });
+        }
+        ComputedSchema.prototype.getValueFromScope = function (scope, own) {
+            return new ComputedReactive(this, scope, own);
+        };
+        ComputedSchema = __decorate([
+            implicit()
+        ], ComputedSchema);
+        return ComputedSchema;
+    }());
+    exports.ComputedSchema = ComputedSchema;
+    function computed() {
+        var deps = [];
+        for (var i = 0, j = arguments.length - 1; i < j; i++) {
+            deps.push(arguments[i]);
+        }
+        var func = arguments[arguments.length - 1];
+        return new ComputedSchema(func, deps);
+    }
+    exports.computed = computed;
+    var ComputedReactive = /** @class */ (function (_super) {
+        __extends(ComputedReactive, _super);
+        function ComputedReactive(schema, scope, own) {
+            var _this = _super.call(this) || this;
+            var deps = [];
+            var args = [];
+            for (var _i = 0, _a = schema.$schemaDependences; _i < _a.length; _i++) {
+                var depSchema = _a[_i];
+                var depReactive = depSchema.getValueFromScope(scope, own);
+                deps.push(depReactive);
+                args.push(depReactive.$reactiveValue);
+                depReactive.subscribe(function (e) {
+                    _this.get(e);
+                }, own);
+            }
+            var value;
+            try {
+                value = schema.$schemaFunc.apply(_this, args);
+            }
+            catch (ex) {
+                console.warn('计算表达式无法正常完成', _this, args);
+            }
+            implicit(_this, {
+                '$reactiveType': SchemaTypes.computed,
+                '$reactiveDependences': deps,
+                '$reactiveSchema': schema,
+                '$reactiveScope': scope,
+                '$reactiveValue': value
+            });
+            return _this;
+        }
+        ComputedReactive.prototype.get = function (src) {
+            var args = [];
+            for (var _i = 0, _a = this.$reactiveDependences; _i < _a.length; _i++) {
+                var depReactive = _a[_i];
+                args.push(depReactive.get());
+            }
+            var newValue;
+            try {
+                newValue = this.$reactiveSchema.$schemaFunc.apply(this, args);
+            }
+            catch (ex) {
+                console.warn('计算表达式无法正常完成', this, args);
+            }
+            var oldValue = this.$reactiveValue;
+            if (oldValue !== newValue) {
+                this.$reactiveValue = newValue;
+                var evt = { type: ChangeEventTypes.setted, src: src, sender: this, value: newValue, old: oldValue };
+                this.notify('', evt);
+            }
+            return newValue;
+        };
+        ComputedReactive = __decorate([
+            implicit()
+        ], ComputedReactive);
+        return ComputedReactive;
+    }(Subject));
+    exports.ComputedReactive = ComputedReactive;
     var ChangeEventTypes;
     (function (ChangeEventTypes) {
         ChangeEventTypes[ChangeEventTypes["setted"] = 0] = "setted";
@@ -932,8 +1017,9 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     ///////////////////////////////////////////////////////////////////////////
     // Scope
     var Scope = /** @class */ (function () {
-        function Scope(parent) {
+        function Scope(parent, name) {
             constant(false, this, '$-scope-parent', parent);
+            constant(false, this, '$-scope-name', name);
         }
         Scope_1 = Scope;
         Scope.prototype.reactive = function (name, schema, initValue, onlyCheckCurrentScope) {
@@ -958,8 +1044,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
             }
             return reactive;
         };
-        Scope.prototype.createScope = function () {
-            return new Scope_1(this);
+        Scope.prototype.createScope = function (name) {
+            return new Scope_1(this, name);
         };
         Scope.prototype.rootScope = function () {
             var root = this['$-scope-root'];
@@ -1082,7 +1168,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
         setTimeout(function () {
             var eachReactive = each;
             if (eachReactive.$schemaType !== undefined)
-                eachReactive = each.getValueFromScope(scope);
+                eachReactive = each.getValueFromScope(scope, ownComponent);
             renderIteration(descriptor, ownComponent, eachReactive, itemSchema, anchor, scope);
         }, 0);
         return anchor;
@@ -1094,7 +1180,6 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
         }
         if (eachReactive.$reactiveType !== undefined) {
             eachReactive.subscribe(function (e) {
-                debugger;
                 if (!e.appends)
                     return;
                 for (var _i = 0, _a = e.appends; _i < _a.length; _i++) {
@@ -1105,9 +1190,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
         }
     }
     function renderIterationItem(descriptor, ownComponent, itemReactive, asSchema, anchor, eachScope) {
-        var itemScope = eachScope.createScope();
+        var itemScope = eachScope.createScope(asSchema.$schemaScopedName);
         itemScope[asSchema.$schemaScopedName] = itemReactive;
-        debugger;
         var elem = createElement(descriptor, ownComponent, itemScope, true);
         anchor.parentElement.insertBefore(elem, anchor);
         itemReactive.subscribe(function (e) {
@@ -1164,12 +1248,12 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
         var component = new componentType(statesSchemaBuilder || function () { });
         constant(false, component, '$ownComponent', ownComponent);
         sureTagAndIds(component, meta, componentType);
-        sureVNode(component, meta, statesSchemaBuilder, vm);
+        sureNodeDescriptor(component, meta, statesSchemaBuilder, vm);
         if (!component.dispose) {
             disposable(component);
         }
         scope || (scope = (_a = ownComponent) === null || _a === void 0 ? void 0 : _a.$scope);
-        var componentScope = scope ? scope.createScope() : new Scope();
+        var componentScope = scope ? scope.createScope(component.$tag + cid("@CS")) : new Scope();
         constant(false, component, '$scope', componentScope);
         constant(false, component, '$states', componentScope.reactive('states', meta.statesSchema, vm));
         return component;
@@ -1195,6 +1279,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
         if (!tag) {
             tag = meta.tag || (meta.tag = cid('ya-component-type-'));
             constant(false, compInstance, '$tag', tag);
+            constant(false, componentType.prototype, '$tag', tag);
         }
         var existed = exports.componentTypes[tag];
         if (existed) {
@@ -1205,9 +1290,9 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
         }
         else
             exports.componentTypes[tag] = componentType;
-        constant(false, compInstance, '$cid', cid(tag, '#'));
+        constant(false, compInstance, '$cid', cid(tag + '@'));
     }
-    function sureVNode(component, meta, statesSchemaBuilder, vm) {
+    function sureNodeDescriptor(component, meta, statesSchemaBuilder, vm) {
         var vnode = meta.vnode;
         if (vnode === undefined) {
             var proxy = createSchemaProxy(meta.statesSchema, vm);
@@ -1229,22 +1314,29 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
         return new Proxy(schema, proxyHandlers);
     }
     var templateStack = [];
-    function local(localSchema) {
+    function local(localSchema, name) {
         localSchema || (localSchema = new Schema(undefined));
         //if(arraySchema) return arraySchema.asArray() as any as T;
         var context = templateStack.pop();
-        var localName = context['$-localvar-name'];
-        if (localName === undefined)
-            localName = context['$-localvar-name'] = 0;
-        localSchema.$schemaScopedName = '$-local-' + localName;
-        context[localSchema.$schemaScopedName] = localSchema;
-        context['$-localvar-name'] = (++localName);
+        var localVarName;
+        if (name) {
+            localVarName = name + cid('@LVN');
+        }
+        else {
+            var localVarNo = context['$-localvar-no'];
+            if (localVarNo === undefined)
+                localVarNo = context['$-localvar-no'] = 0;
+            localVarName = '$-local-' + localVarNo;
+            context['$-localvar-no'] = (++localVarNo);
+        }
+        localSchema.$schemaScopedName = localVarName;
+        context[localVarName] = localSchema;
         templateStack.push(context);
         return localSchema;
     }
     exports.local = local;
-    function localFor(schema) {
-        return local(schema.$schemaArrayItem);
+    function localFor(schema, name) {
+        return local(schema.$schemaArrayItem, name);
     }
     exports.localFor = localFor;
     function bindComponentStates(component, attrs, scope) {
@@ -1261,7 +1353,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
                     prop = innerStates[attrName] = new ConstantReactive(bindVal, attrName);
                 }
                 if (bindValue instanceof Schema) {
-                    var bindValueReactive = bindValue.getValueFromScope(scope);
+                    var bindValueReactive = bindValue.getValueFromScope(scope, component);
                     var handler = function (e) {
                         var propReactive = innerStates[attrName];
                         if (propReactive instanceof Reactive) {
@@ -1279,8 +1371,6 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     function createElementNode(descriptor, ownComponent, scope) {
         if (!descriptor.tag)
             return null;
-        if (!scope)
-            scope = ownComponent.$scope || new Scope();
         var element = document.createElement(descriptor.tag);
         var attrs = descriptor.attrs;
         var children = descriptor.children;
@@ -1311,7 +1401,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
                     childElement = createTextNode(child, ownComponent, scope);
                 }
                 else {
-                    childElement = createElement(child, ownComponent);
+                    childElement = createElement(child, ownComponent, scope);
                 }
                 element.appendChild(childElement);
             }
@@ -1321,7 +1411,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
         var binder = exports.binders[attrName];
         var reactive;
         if (attrValue.$schemaType !== undefined) {
-            reactive = attrValue.getValueFromScope(scope);
+            reactive = attrValue.getValueFromScope(scope, ownComponent);
         }
         else {
             if (binder) {
@@ -1344,7 +1434,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
         element[evtName] = function (e) {
             var func = handler;
             if (handler.$schemaType !== undefined) {
-                func = handler.getValueFromScope(scope);
+                func = handler.getValueFromScope(scope, ownComponent);
             }
             if (func.$reactiveType !== undefined)
                 func = func.$reactiveValue;
@@ -1371,7 +1461,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
                 console.warn("\u4F20\u5165\u4E86schema,\u4F46\u5374\u6CA1\u6709ownComponent,\u4F7F\u7528schema\u7684defaultValue\u4F5C\u4E3A\u5185\u5BB9");
                 return document.createTextNode(bindValue.$schemaDefaultValue);
             }
-            reactive = bindValue.getValueFromScope(scope);
+            reactive = bindValue.getValueFromScope(scope, ownComponent);
         }
         else if (bindValue.$reactiveType !== undefined) {
             reactive = bindValue;
@@ -1424,8 +1514,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     var YA = /** @class */ (function () {
         function YA(opts) {
             this.opts = opts;
-            this.$scope = new Scope();
-            var elem = this.$element = createElement(opts.template, this);
+            this.$scope = new Scope(undefined, opts.name || 'root');
+            var elem = this.$element = createElement(opts.template, this, this.$scope, true);
             constant(false, elem, '$YA', this);
             if (opts.element) {
                 opts.element.innerHTML = "";
@@ -1440,6 +1530,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     IYA.localFor = localFor;
     IYA.componentTypes = exports.componentTypes;
     IYA.binders = exports.binders;
+    IYA.computed = computed;
     exports.default = globalThis.YA = IYA;
 });
 //# sourceMappingURL=YA.js.map
