@@ -183,6 +183,27 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     exports.array_remove = array_remove;
     ///////////////////////////////////////
     // 对象处理
+    function deepClone(obj, _clones) {
+        var t = typeof obj;
+        if (t === 'object') {
+            if (!_clones)
+                _clones = [];
+            else
+                for (var _i = 0, _clones_1 = _clones; _i < _clones_1.length; _i++) {
+                    var cloneInfo = _clones_1[_i];
+                    if (cloneInfo.origin === obj)
+                        return cloneInfo.cloned;
+                }
+            var clone = is_array(obj) ? [] : {};
+            _clones.push({ origin: obj, cloned: clone });
+            for (var n in obj) {
+                clone[n] = deepClone(obj[n], _clones);
+            }
+        }
+        else
+            return obj;
+    }
+    exports.deepClone = deepClone;
     exports.extend = function () {
         var target = arguments[0] || {};
         for (var i = 1, j = arguments.length; i < j; i++) {
@@ -271,6 +292,9 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
             seed = cidSeeds[name] = 0;
         if (++seed > 2100000000) {
             seed = -2100000000;
+            cidSeeds[name] = seed;
+        }
+        else {
             cidSeeds[name] = seed;
         }
         return "" + name + seed;
@@ -534,7 +558,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
         SchemaTypes[SchemaTypes["value"] = 0] = "value";
         SchemaTypes[SchemaTypes["object"] = 1] = "object";
         SchemaTypes[SchemaTypes["array"] = 2] = "array";
-        SchemaTypes[SchemaTypes["computed"] = 3] = "computed";
+        SchemaTypes[SchemaTypes["constant"] = 3] = "constant";
+        SchemaTypes[SchemaTypes["computed"] = 4] = "computed";
     })(SchemaTypes = exports.SchemaTypes || (exports.SchemaTypes = {}));
     var Schema = /** @class */ (function () {
         function Schema(defaultValue, ownSchema, name) {
@@ -789,9 +814,11 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     exports.ComputedReactive = ComputedReactive;
     var ChangeEventTypes;
     (function (ChangeEventTypes) {
-        ChangeEventTypes[ChangeEventTypes["setted"] = 0] = "setted";
-        ChangeEventTypes[ChangeEventTypes["appended"] = 1] = "appended";
-        ChangeEventTypes[ChangeEventTypes["removed"] = 2] = "removed";
+        ChangeEventTypes[ChangeEventTypes["notify"] = 0] = "notify";
+        ChangeEventTypes[ChangeEventTypes["setted"] = 1] = "setted";
+        ChangeEventTypes[ChangeEventTypes["bubbled"] = 2] = "bubbled";
+        ChangeEventTypes[ChangeEventTypes["appended"] = 3] = "appended";
+        ChangeEventTypes[ChangeEventTypes["removed"] = 4] = "removed";
     })(ChangeEventTypes = exports.ChangeEventTypes || (exports.ChangeEventTypes = {}));
     var Reactive = /** @class */ (function (_super) {
         __extends(Reactive, _super);
@@ -863,27 +890,27 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
             return _this;
         }
         Reactive_1 = Reactive;
-        Reactive.prototype.update = function (value, src, changeType) {
+        Reactive.prototype.update = function (value, src, bubble) {
             var schemaType = this.$reactiveSchema.$schemaType;
             if (schemaType === SchemaTypes.object) {
-                updateObject(this, value, src);
+                return updateObject(this, value, src, bubble);
             }
             else if (schemaType === SchemaTypes.array) {
-                updateArray(this, value, src);
+                return updateArray(this, value, src, bubble);
             }
             else {
                 var old = this.$reactiveValue;
                 if (value === old)
-                    return this;
+                    return false;
                 this.$reactiveValue = value;
                 if (this.$reactiveOwn) {
                     this.$reactiveOwn.$reactiveValue[this.$reactiveName] = value;
                 }
-                this.notify("", {
-                    type: changeType === undefined ? ChangeEventTypes.setted : changeType, value: value, old: old, src: src || this, sender: this
-                });
+                this.notify({
+                    type: ChangeEventTypes.setted, value: deepClone(value), old: old, sender: this, src: src
+                }, bubble);
             }
-            return this;
+            return true;
         };
         Reactive.prototype.get = function () {
             var schemaType = this.$reactiveSchema.$schemaType;
@@ -906,8 +933,29 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
                 return result;
             }
             else {
-                return this.$reactiveValue;
+                return deepClone(this.$reactiveValue);
             }
+        };
+        Reactive.prototype.notify = function (evt, bubble) {
+            if (evt === undefined) {
+                var value = deepClone(this.$reactiveValue);
+                evt = {
+                    type: ChangeEventTypes.notify, value: value, old: value, sender: this
+                };
+            }
+            else {
+                if (!evt.sender)
+                    evt.sender = this;
+            }
+            _super.prototype.notify.call(this, "", evt);
+            if (bubble === true) {
+                if (this.$reactiveOwn) {
+                    var value = deepClone(this.$reactiveValue);
+                    var ownEvt = { type: ChangeEventTypes.bubbled, value: value, old: value, src: evt };
+                    this.$reactiveOwn.notify(ownEvt, true);
+                }
+            }
+            return this;
         };
         var Reactive_1;
         Reactive = Reactive_1 = __decorate([
@@ -922,6 +970,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
             var _this = _super.call(this, Reactive, undefined) || this;
             _this.$reactiveValue = value;
             _this.$reactiveName = name;
+            _this.$reactiveType = SchemaTypes.constant;
             return _this;
         }
         ConstantReactive.prototype.subscribe = function (topic, listener, refObj) {
@@ -941,7 +990,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
         ConstantReactive.prototype.update = function (value) {
             debugger;
             console.warn("\u5728ConstantReactive\u4E0A\u8C03\u7528\u4E86update\u64CD\u4F5C,\u5FFD\u7565\u3002", this, value);
-            return this;
+            return false;
         };
         ConstantReactive = __decorate([
             implicit()
@@ -949,7 +998,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
         return ConstantReactive;
     }(Reactive));
     exports.ConstantReactive = ConstantReactive;
-    function updateObject(reactive, value, src) {
+    function updateObject(reactive, value, evtSrc, bubble) {
         var old = reactive.$reactiveValue;
         value || (value = {});
         reactive.$reactiveValue = value;
@@ -957,25 +1006,36 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
             reactive.$reactiveOwn.$reactiveValue[reactive.$reactiveName] = value;
         }
         var event = {
-            type: ChangeEventTypes.setted, value: value, old: old, sender: reactive, src: src || reactive
+            type: ChangeEventTypes.setted, value: value, old: old, sender: reactive, src: evtSrc
         };
+        var hasChanges = value !== old;
         var keys = Object.keys(value);
         for (var _i = 0, keys_1 = keys; _i < keys_1.length; _i++) {
             var n = keys_1[_i];
             var propReacitve = reactive[n];
             if (propReacitve instanceof Reactive) {
-                propReacitve.update(value[n], event);
+                if (propReacitve.update(value[n], event, false))
+                    hasChanges = true;
             }
         }
-        return reactive;
+        if (bubble === false)
+            return hasChanges;
+        else {
+            if (hasChanges) {
+                var evt = { type: ChangeEventTypes.bubbled, value: value, old: old, sender: this };
+                reactive.notify(evt, true);
+            }
+            return false;
+        }
     }
-    function updateArray(reactive, value, src) {
+    function updateArray(reactive, value, src, bubble) {
         var old = reactive.$reactiveValue;
         value || (value = []);
         reactive.$reactiveValue = value;
         if (reactive.$reactiveOwn) {
             reactive.$reactiveOwn.$reactiveValue[reactive.$reactiveName] = value;
         }
+        var hasChanges = old !== value;
         var lengthReactive = reactive.length;
         var oldLength = lengthReactive.$reactiveValue;
         var newLength = value.length;
@@ -1003,15 +1063,27 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
                 type: ChangeEventTypes.appended, value: value, old: old, src: src || reactive,
                 appends: appends, sender: reactive
             };
-            reactive.notify(event_1);
+            hasChanges = true;
+            reactive.notify(event_1, false);
         }
         for (var _i = 0, removes_1 = removes; _i < removes_1.length; _i++) {
             var item = removes_1[_i];
-            item.reactive.update(undefined, event, ChangeEventTypes.removed);
+            hasChanges = true;
+            item.reactive.update(undefined, null, false);
         }
         for (var _a = 0, updates_1 = updates; _a < updates_1.length; _a++) {
             var item = updates_1[_a];
-            item.reactive.update(item.value, event);
+            if (item.reactive.update(item.value, null, false))
+                hasChanges = true;
+        }
+        if (bubble === false)
+            return hasChanges;
+        else {
+            if (hasChanges) {
+                var evt = { type: ChangeEventTypes.bubbled, value: value, old: old, sender: this };
+                reactive.notify(evt, true);
+            }
+            return false;
         }
     }
     ///////////////////////////////////////////////////////////////////////////
@@ -1130,12 +1202,13 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
             if (elem)
                 return elem;
         }
-        var element = createComponentNode(descriptor, ownComponent, scope);
-        if (!element) {
+        var element = createSlotNode(descriptor, ownComponent, scope);
+        if (!element)
+            element = createComponentNode(descriptor, ownComponent, scope);
+        if (!element)
             element = createElementNode(descriptor, ownComponent, scope);
-            if (!element)
-                element = createTextNode(descriptor.content, ownComponent, scope);
-        }
+        if (!element)
+            element = createTextNode(descriptor.content, ownComponent, scope);
         return element;
     }
     /**
@@ -1202,6 +1275,39 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
         }, ownComponent);
         return elem;
     }
+    function createSlotNode(descriptor, ownComponent, scope) {
+        if (descriptor.tag !== 'slot')
+            return undefined;
+        var attrs = descriptor.attrs || {};
+        var name = attrs.name || '';
+        var map = attrs.map || {};
+        var slotData = {};
+        for (var mapName in map) {
+            var mapValue = map[mapName];
+            debugger;
+            //if(attrName[0])
+            //将代理去掉，获取原始的schema
+            if (mapValue && mapValue["$-schema-proxy-raw"])
+                mapValue = mapValue["$-schema-proxy-raw"];
+            var mapReactive = mapValue;
+            if (mapReactive.$schemaType !== undefined) {
+                mapReactive = mapValue.getValueFromScope(scope);
+            }
+            slotData[mapName] = mapReactive;
+        }
+        var placeholder = document.createComment("slot " + (name || 'default') + " placeholder");
+        var slots = ownComponent.$slots;
+        if (!slots) {
+            slots = {};
+            constant(false, ownComponent, '$slots', slots);
+        }
+        var slotInfo = { map: slotData, placeholder: placeholder };
+        if (slots[name]) {
+            console.warn('有相同名称的slot，后面的将会替换掉前面的slot', ownComponent.$meta.vnode);
+        }
+        slots[name] = slotInfo;
+        return placeholder;
+    }
     function createComponentNode(descriptor, ownComponent, scope) {
         var componentFunc;
         if (descriptor.component) {
@@ -1214,11 +1320,12 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
         var component = newComponent(componentFunc, descriptor.attrs, ownComponent, scope);
         bindComponentStates(component, descriptor.attrs, scope);
         var element = component.$element = createElement(component.$meta.vnode, component, component.$scope);
+        createSlotContentNodes(component, descriptor, scope);
         constant(false, element, '$-ya-component', component);
         constant(false, component, '$element', element);
         return element;
     }
-    function newComponent(componentFunc, vm, ownComponent, scope) {
+    function newComponent(componentFunc, attrs, ownComponent, scope) {
         var _a;
         // 获取或构建componentType
         var componentType;
@@ -1248,14 +1355,15 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
         var component = new componentType(statesSchemaBuilder || function () { });
         constant(false, component, '$ownComponent', ownComponent);
         sureTagAndIds(component, meta, componentType);
-        sureNodeDescriptor(component, meta, statesSchemaBuilder, vm);
+        sureNodeDescriptor(component, meta, statesSchemaBuilder, attrs);
         if (!component.dispose) {
             disposable(component);
         }
         scope || (scope = (_a = ownComponent) === null || _a === void 0 ? void 0 : _a.$scope);
         var componentScope = scope ? scope.createScope(component.$tag + cid("@CS")) : new Scope();
         constant(false, component, '$scope', componentScope);
-        constant(false, component, '$states', componentScope.reactive('states', meta.statesSchema, vm));
+        //let states= {};
+        constant(false, component, '$states', componentScope.reactive('states', meta.statesSchema));
         return component;
     }
     function sureStatesSchema(meta, componentType) {
@@ -1294,9 +1402,9 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     }
     function sureNodeDescriptor(component, meta, statesSchemaBuilder, vm) {
         var vnode = meta.vnode;
+        templateStack.push(meta.localSchemas);
         if (vnode === undefined) {
             var proxy = createSchemaProxy(meta.statesSchema, vm);
-            templateStack.push(meta.localSchemas);
             try {
                 vnode = meta.vnode =
                     typeof component.template === "function"
@@ -1304,9 +1412,84 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
                         : component.template;
             }
             finally {
-                templateStack.pop();
             }
         }
+        templateStack.pop();
+    }
+    function createSlotContentNodes(ownComponent, descriptor, scope) {
+        if (!descriptor.children)
+            return;
+        var slots = ownComponent.$slots;
+        if (!slots) {
+            console.warn("\u7EC4\u4EF6" + ownComponent.$tag + "\u672A\u63D0\u4F9Bslot\uFF0C\u4F46\u8C03\u7528\u8BE5\u7EC4\u4EF6\u65F6\u7ED9\u5B9A\u4E86\u5B50\u8282\u70B9\uFF0C\u5FFD\u7565\u5B50\u8282\u70B9\u5185\u5BB9", ownComponent);
+            return;
+        }
+        for (var _i = 0, _a = descriptor.children; _i < _a.length; _i++) {
+            var childDescriptor = _a[_i];
+            if (!childDescriptor)
+                continue;
+            var childElement = void 0, slotInfo = void 0, slotScope = void 0;
+            if (childDescriptor["$-schema-proxy-raw"]) {
+                slotInfo = slots[''];
+                if (slotInfo) {
+                    slotScope = createSlotScope(ownComponent.$slotMap, '', slotInfo, ownComponent, scope);
+                    childElement = createTextNode(childDescriptor["$-schema-proxy-raw"], ownComponent, slotScope);
+                }
+            }
+            else if (childDescriptor.$schemaType !== undefined) {
+                slotInfo = slots[''];
+                if (slotInfo) {
+                    slotScope = createSlotScope(ownComponent.$slotMap, '', slotInfo, ownComponent, scope);
+                    childElement = createTextNode(childDescriptor, ownComponent, slotScope);
+                }
+            }
+            else {
+                var slotname = childDescriptor.attrs ? childDescriptor.attrs['slot-name'] : undefined;
+                if (!slotname)
+                    slotname = '';
+                else if (slotname.$reactiveType === SchemaTypes.constant) {
+                    slotname = slotname.$reactiveValue;
+                }
+                if (slotname === undefined) {
+                    console.warn("\u975E\u6CD5\u7684slot-name\u5C5E\u6027\u503C\uFF0C\u4E0D\u53EF\u4EE5\u662F\u53D8\u91CF", ownComponent);
+                    return;
+                }
+                slotInfo = slots[slotname];
+                if (slotInfo) {
+                    debugger;
+                    slotScope = createSlotScope(ownComponent.$slotMap, slotname, slotInfo, ownComponent, scope);
+                    childElement = createElement(childDescriptor, ownComponent, slotScope);
+                }
+            }
+            if (childElement) {
+                var slotPlaceholder = slotInfo.placeholder;
+                slotPlaceholder.parentNode.insertBefore(childElement, slotPlaceholder);
+            }
+        }
+    }
+    function createSlotScope(slotMap, name, slotInfo, ownComponent, scope) {
+        var slotScope = scope.createScope('slot-' + (name || 'default'));
+        debugger;
+        var _loop_1 = function (n) {
+            var srcReactive = slotInfo.map[n];
+            var schema = slotMap[n];
+            if (!srcReactive) {
+                console.warn("\u8BF7\u6C42slot\u4E0A\u7684" + n + "\u6570\u636E,\u4F46\u8BE5slot\u5E76\u672A\u63D0\u4F9B\u8BE5\u540D\u79F0\u7684\u6620\u5C04", ownComponent, slotMap, slotInfo);
+                return "continue";
+            }
+            if (!schema.$schemaScopedName) {
+                console.warn(name + "\u4E0D\u6B63\u786E\u7684slot\u6620\u5C04,slot-map\u7684\u503C\u5FC5\u987B\u662Flocal\u53D8\u91CF", ownComponent);
+            }
+            var destReactive = slotScope.reactive(schema.$schemaScopedName, schema, srcReactive.$reactiveValue, true);
+            srcReactive.subscribe(function (e) {
+                destReactive.update(e.value);
+            }, ownComponent);
+            slotScope[schema.$schemaScopedName] = destReactive;
+        };
+        for (var n in slotMap) {
+            _loop_1(n);
+        }
+        return slotScope;
     }
     function createSchemaProxy(schema, defaultValue) {
         if (defaultValue !== undefined)
@@ -1330,9 +1513,10 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
             context['$-localvar-no'] = (++localVarNo);
         }
         localSchema.$schemaScopedName = localVarName;
-        context[localVarName] = localSchema;
+        var proxy = createSchemaProxy(localSchema);
+        context[localVarName] = proxy;
         templateStack.push(context);
-        return localSchema;
+        return proxy;
     }
     exports.local = local;
     function localFor(schema, name) {
@@ -1343,6 +1527,10 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
         var innerStates = component.$states;
         for (var attrName in attrs)
             (function (attrName, bindValue, innerStates) {
+                if (attrName == "slot-map") {
+                    component.$slotMap = bindValue;
+                    return;
+                }
                 if (bindValue && bindValue["$-schema-proxy-raw"])
                     bindValue = bindValue["$-schema-proxy-raw"];
                 var prop = innerStates[attrName];
@@ -1354,6 +1542,10 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
                 }
                 if (bindValue instanceof Schema) {
                     var bindValueReactive = bindValue.getValueFromScope(scope, component);
+                    if (!bindValueReactive) {
+                        console.warn("\u6CA1\u6709\u627E\u5230\u76F8\u5173\u53D8\u91CF:" + bindValue.getNamePaths().join('.') + ",\u5C06\u5FFD\u7565\u8BE5\u53D8\u91CF", component);
+                        return;
+                    }
                     var handler = function (e) {
                         var propReactive = innerStates[attrName];
                         if (propReactive instanceof Reactive) {
@@ -1362,6 +1554,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
                     };
                     //外面的变化后，触发里面的变化
                     bindValueReactive.subscribe(handler, component);
+                    prop.$reactiveValue = bindValueReactive.$reactiveValue;
                 }
                 else
                     prop.$reactiveValue = bindValue;
@@ -1455,16 +1648,18 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
         if (!bindValue)
             return document.createTextNode(bindValue);
         var reactive;
-        if (bindValue.$schemaType !== undefined) {
+        if (bindValue["$-schema-proxy-raw"])
+            bindValue = bindValue["$-schema-proxy-raw"];
+        else if (bindValue.$reactiveType !== undefined) {
+            reactive = bindValue;
+        }
+        else if (bindValue.$schemaType !== undefined) {
             scope || (scope = (_a = ownComponent) === null || _a === void 0 ? void 0 : _a.$scope);
             if (!scope) {
                 console.warn("\u4F20\u5165\u4E86schema,\u4F46\u5374\u6CA1\u6709ownComponent,\u4F7F\u7528schema\u7684defaultValue\u4F5C\u4E3A\u5185\u5BB9");
                 return document.createTextNode(bindValue.$schemaDefaultValue);
             }
             reactive = bindValue.getValueFromScope(scope, ownComponent);
-        }
-        else if (bindValue.$reactiveType !== undefined) {
-            reactive = bindValue;
         }
         if (reactive) {
             var node_1 = document.createTextNode(reactive.$reactiveValue);
@@ -1528,6 +1723,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     var IYA = YA;
     IYA.createNodeDescriptor = exports.createNodeDescriptor;
     IYA.localFor = localFor;
+    IYA.local = local;
     IYA.componentTypes = exports.componentTypes;
     IYA.binders = exports.binders;
     IYA.computed = computed;

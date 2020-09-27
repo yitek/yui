@@ -137,6 +137,20 @@ export function array_remove(arr:any[],item:any):boolean{
 ///////////////////////////////////////
 // 对象处理
 
+export function deepClone(obj:any,_clones?:any[]){
+    const t = typeof obj;
+    if(t==='object'){
+        if(!_clones) _clones=[];
+        else for(const cloneInfo of _clones){
+            if(cloneInfo.origin===obj) return cloneInfo.cloned;
+        }
+        let clone = is_array(obj)?[]:{};
+        _clones.push({origin:obj,cloned:clone});
+        for(let n in obj) {
+            clone[n] = deepClone(obj[n],_clones);
+        }
+    }else return obj;
+}
 
 export let extend :(...args)=>any= function (){
     let target = arguments[0] ||{};
@@ -221,7 +235,9 @@ function cid(name?:string):string{
     if (++seed>2100000000){
         seed = -2100000000;
         cidSeeds[name] = seed;
-    } 
+    } else {
+        cidSeeds[name] = seed;
+    }
     return `${name}${seed}`;
 }
 
@@ -447,7 +463,7 @@ export class Subject extends Disposable {
 }
 
 export enum SchemaTypes{
-    value,object,array,computed
+    value,object,array,constant,computed
 }
 @implicit()
 export class Schema{
@@ -714,7 +730,9 @@ export interface IChangeItem{
     reactive:Reactive;
 }
 export enum ChangeEventTypes{
+    notify,
     setted,
+    bubbled,
     appended,
     removed,
 }
@@ -807,24 +825,24 @@ export class Reactive extends Subject{
         }
         
     }
-    update(value,src?, changeType?: ChangeEventTypes):Reactive{
+    update(value,src?, bubble?: boolean):boolean{
         let schemaType = this.$reactiveSchema.$schemaType; 
         if (schemaType===SchemaTypes.object) {
-           updateObject(this, value, src);       
+           return updateObject(this, value, src,bubble);       
         } else if(schemaType===SchemaTypes.array) {
-            updateArray(this, value, src);
+            return updateArray(this, value, src,bubble);
         } else {
             let old = this.$reactiveValue;
-            if (value===old) return this;
+            if (value===old) return false;
             this.$reactiveValue=value;
             if (this.$reactiveOwn) {
                 this.$reactiveOwn.$reactiveValue[this.$reactiveName] = value;
             }
-            this.notify("",{
-                type: changeType===undefined?ChangeEventTypes.setted:changeType, value:value, old:old, src:src||this, sender:this
-            });
+            this.notify({
+                type: ChangeEventTypes.setted, value:deepClone(value), old:old, sender:this,src:src
+            },bubble);
         }
-        return this;
+        return true;
     }
     get():any{
         let schemaType = this.$reactiveSchema.$schemaType;
@@ -844,9 +862,29 @@ export class Reactive extends Subject{
             }
             return result;
         }else{
-            return this.$reactiveValue;
+            return deepClone(this.$reactiveValue);
         }
     }
+    notify(evt,bubble?:boolean):Reactive {
+        if(evt===undefined){
+            let value = deepClone(this.$reactiveValue);
+            evt = {
+                type: ChangeEventTypes.notify, value:value, old:value, sender:this
+            }
+        }else {
+            if(!evt.sender) evt.sender = this;
+        }
+        super.notify("",evt);
+        if(bubble===true){
+            if(this.$reactiveOwn){
+                let value = deepClone(this.$reactiveValue);
+                let ownEvt = {type: ChangeEventTypes.bubbled,value:value,old:value,src:evt};
+                this.$reactiveOwn.notify(ownEvt,true);
+            }
+        }
+        return this;
+    }
+    
 }
 
 @implicit()
@@ -855,6 +893,7 @@ export class ConstantReactive extends Reactive{
         super(Reactive, undefined);
         this.$reactiveValue = value;
         this.$reactiveName = name;
+        this.$reactiveType = SchemaTypes.constant;
     }
     subscribe(topic, listener?, refObj?):ConstantReactive {
         return this;
@@ -866,15 +905,15 @@ export class ConstantReactive extends Reactive{
         return this;
     }
     get():any { return this.$reactiveValue; }
-    update(value):ConstantReactive {
+    update(value):boolean {
         debugger
         console.warn(`在ConstantReactive上调用了update操作,忽略。`,this,value);
-        return this;
+        return false;
     }
 
 }
 
-function updateObject(reactive:Reactive, value, src) {
+function updateObject(reactive:Reactive, value, evtSrc,bubble?:boolean):boolean {
     let old = reactive.$reactiveValue;
     value || (value={});
     reactive.$reactiveValue = value;
@@ -882,27 +921,34 @@ function updateObject(reactive:Reactive, value, src) {
         reactive.$reactiveOwn.$reactiveValue[reactive.$reactiveName] = value;
     }
     let event:IChangeEvent = {
-        type: ChangeEventTypes.setted, value: value, old: old, sender: reactive, src: src||reactive
+        type: ChangeEventTypes.setted, value: value, old: old, sender: reactive, src: evtSrc
     };
-        
+    let hasChanges = value!==old;
     let keys = Object.keys(value);
     for (const n of keys) {
         let propReacitve = reactive[n];
         if(propReacitve instanceof Reactive){
-            propReacitve.update(value[n], event);
+            if(propReacitve.update(value[n], event,false)) hasChanges=true;
         }
     }
-    return reactive;  
+    if(bubble===false) return hasChanges;
+    else {
+        if(hasChanges) {
+            let evt = {type:ChangeEventTypes.bubbled,value:value,old:old,sender:this};
+            reactive.notify(evt,true);
+        }
+        return false;
+    } 
 }
 
-function updateArray(reactive:Reactive, value, src) {
+function updateArray(reactive:Reactive, value, src,bubble?:boolean) :boolean{
     let old = reactive.$reactiveValue;
     value || (value=[]);
     reactive.$reactiveValue=value;
     if (reactive.$reactiveOwn) {
         reactive.$reactiveOwn.$reactiveValue[reactive.$reactiveName] = value;
     }
-    
+    let hasChanges = old!==value;
     
     let lengthReactive = (reactive as any).length as Reactive;
     let oldLength = lengthReactive.$reactiveValue;
@@ -932,14 +978,24 @@ function updateArray(reactive:Reactive, value, src) {
             type: ChangeEventTypes.appended, value:value, old:old, src:src||reactive, 
             appends:appends,sender:reactive
         };
-        reactive.notify(event);
+        hasChanges = true;
+        reactive.notify(event,false);
     }
     for (const item of removes) {
-        item.reactive.update(undefined,event, ChangeEventTypes.removed);
+        hasChanges = true;
+        item.reactive.update(undefined,null,false);
     }
     for (const item of updates) {
-        item.reactive.update(item.value,event);
+        if(item.reactive.update(item.value,null,false)) hasChanges = true;
     }
+    if(bubble===false) return hasChanges;
+    else {
+        if(hasChanges) {
+            let evt = {type:ChangeEventTypes.bubbled,value:value,old:old,sender:this};
+            reactive.notify(evt,true);
+        }
+        return false;
+    } 
 }
 ///////////////////////////////////////////////////////////////////////////
 // Scope
@@ -1059,13 +1115,18 @@ export interface IComponentMeta{
     statesSchema?: Schema;
     localSchemas? : { [name:string] : Schema };
 }
-
+interface ISlotInfo{
+    placeholder:HTMLElement;
+    map:{[name:string]:Reactive}
+}
 export interface IComponent<T> extends IDisposable{
     $meta : IComponentMeta;
     $cid : string;
     $tag? : string;
     $scope : Scope;
     $states : Reactive;
+    $slots:{[name:string]:ISlotInfo};
+    $slotMap:{[name:string]:Schema};
     $ownComponent? : IComponent<any>;
     $element? : any;
     template : INodeDescriptor|TTemplateFunc;
@@ -1098,12 +1159,13 @@ function createElement(descriptor:INodeDescriptor ,ownComponent?:IComponent<any>
         let elem = createIterationNodes(descriptor,ownComponent,scope);
         if(elem) return elem;
     }
-    let element = createComponentNode(descriptor,ownComponent,scope);
-    if (!element) {
+    let element = createSlotNode(descriptor,ownComponent,scope);
+    if(!element) 
+        element = createComponentNode(descriptor,ownComponent,scope);
+    if (!element) 
         element = createElementNode(descriptor, ownComponent, scope);
-        if (!element)
-            element = createTextNode(descriptor.content, ownComponent,scope);
-    }
+    if (!element) 
+        element = createTextNode(descriptor.content, ownComponent,scope);
     return element;
 }
 
@@ -1164,7 +1226,38 @@ function renderIterationItem(descriptor:INodeDescriptor,ownComponent:IComponent<
     },ownComponent);
     return elem;
 }
+function createSlotNode(descriptor:INodeDescriptor, ownComponent?:IComponent<any>, scope?:Scope):HTMLElement{
+    if (descriptor.tag!=='slot') return undefined;
+    let attrs = descriptor.attrs || {};
+    let name:string = attrs.name || '';
+    let map:{[name:string]:any} = attrs.map || {};
+    let slotData = {};
+    for(let mapName  in map){
+        let mapValue = map[mapName];
+        debugger
+        //if(attrName[0])
+        //将代理去掉，获取原始的schema
+        if(mapValue && mapValue["$-schema-proxy-raw"]) mapValue = mapValue["$-schema-proxy-raw"];
+        let mapReactive = mapValue;
+        if((mapReactive as Schema).$schemaType!==undefined){
+            mapReactive = (mapValue as Schema).getValueFromScope(scope);
+        }
+        slotData[mapName] = mapReactive;
+    }
+    let placeholder = document.createComment(`slot ${name||'default'} placeholder`) as any as HTMLElement;
+    let slots = ownComponent.$slots ;
+    if(!slots){
+        slots = {};
+        constant(false,ownComponent,'$slots',slots);
+    } 
+    let slotInfo:ISlotInfo = {map:slotData, placeholder: placeholder};
+    if(slots[name]) {
+        console.warn('有相同名称的slot，后面的将会替换掉前面的slot',ownComponent.$meta.vnode);
+    }
+    slots[name] = slotInfo;
+    return placeholder as any as HTMLElement;
 
+}
 
 function createComponentNode(descriptor:INodeDescriptor, ownComponent: IComponent<any>, scope?: Scope):HTMLElement {
     let componentFunc: TComponentFunc;
@@ -1176,13 +1269,14 @@ function createComponentNode(descriptor:INodeDescriptor, ownComponent: IComponen
     let component = newComponent(componentFunc, descriptor.attrs, ownComponent, scope);
     bindComponentStates(component,descriptor.attrs,scope)
     let element = component.$element = createElement(component.$meta.vnode, component,component.$scope);
+    createSlotContentNodes(component,descriptor,scope);
     constant(false, element,'$-ya-component', component);
     constant(false, component,'$element',element);
     return element;
 }
 function newComponent(
     componentFunc: TComponentFunc,
-    vm: { [name:string]: any },
+    attrs: { [name:string]: any },
     ownComponent: IComponent<any>,
     scope:Scope
 ):IComponent<any> {
@@ -1215,7 +1309,7 @@ function newComponent(
     let component:IComponent<any> = new componentType(statesSchemaBuilder||function(){});
     constant(false,component,'$ownComponent', ownComponent);
     sureTagAndIds(component, meta, componentType);
-    sureNodeDescriptor(component, meta, statesSchemaBuilder, vm);
+    sureNodeDescriptor(component, meta, statesSchemaBuilder, attrs);
     
     if (!component.dispose) { disposable(component); }
     
@@ -1224,7 +1318,8 @@ function newComponent(
     
     let componentScope =  scope ? scope.createScope(component.$tag+cid("@CS")) : new Scope();
     constant(false, component,'$scope',componentScope);
-    constant(false, component,'$states',componentScope.reactive('states',meta.statesSchema, vm));
+    //let states= {};
+    constant(false, component,'$states',componentScope.reactive('states',meta.statesSchema));
    
     return component;
 }
@@ -1266,18 +1361,89 @@ function sureTagAndIds(compInstance:IComponent<any>, meta:IComponentMeta, compon
 
 function sureNodeDescriptor(component:IComponent<any>, meta:IComponentMeta,statesSchemaBuilder:TStatesSchemaBuilder, vm:INodeDescriptor){
     let vnode = meta.vnode;
+    templateStack.push(meta.localSchemas);
     if (vnode===undefined){
         let proxy = createSchemaProxy(meta.statesSchema, vm);
-        templateStack.push(meta.localSchemas);
+        
         try{
             vnode = meta.vnode = 
                 typeof component.template==="function"
                     ? component.template(proxy,statesSchemaBuilder) 
                     : component.template;
         }finally{
-            templateStack.pop();
+            
         }
     }
+    templateStack.pop();
+}
+
+function createSlotContentNodes(ownComponent:IComponent<any>,descriptor:INodeDescriptor,scope:Scope){
+    if(!descriptor.children) return;
+    let slots = ownComponent.$slots;
+    if(!slots){
+        console.warn(`组件${ownComponent.$tag}未提供slot，但调用该组件时给定了子节点，忽略子节点内容`,ownComponent);
+        return;
+    } 
+    for(let childDescriptor of descriptor.children){
+        if(!childDescriptor) continue;
+        let childElement,slotInfo:ISlotInfo,slotScope:Scope;
+        if(childDescriptor["$-schema-proxy-raw"]) {
+            slotInfo = slots[''];
+            if(slotInfo) {
+                slotScope = createSlotScope(ownComponent.$slotMap,'',slotInfo,ownComponent,scope);
+                childElement = createTextNode(childDescriptor["$-schema-proxy-raw"], ownComponent, slotScope);
+            }
+        }else if((childDescriptor as Schema).$schemaType!==undefined){
+            slotInfo = slots[''];
+            if(slotInfo) {
+                slotScope = createSlotScope(ownComponent.$slotMap,'',slotInfo,ownComponent,scope);
+                childElement = createTextNode(childDescriptor as Schema, ownComponent, slotScope);
+            }
+        }else {
+            let slotname = childDescriptor.attrs?childDescriptor.attrs['slot-name']:undefined;
+            if(!slotname) slotname = '';
+            else if(slotname.$reactiveType===SchemaTypes.constant){
+                slotname = slotname.$reactiveValue;
+            }
+            if(slotname===undefined) {
+                console.warn(`非法的slot-name属性值，不可以是变量`,ownComponent);
+                return;
+            }
+            slotInfo = slots[slotname];
+            if(slotInfo){
+                debugger
+                slotScope = createSlotScope(ownComponent.$slotMap,slotname,slotInfo,ownComponent,scope);
+                childElement = createElement(childDescriptor,ownComponent,slotScope);
+            }
+            
+        }
+        if(childElement) {
+            let slotPlaceholder = slotInfo.placeholder;
+            slotPlaceholder.parentNode.insertBefore(childElement,slotPlaceholder);
+        }
+    }
+}
+
+function createSlotScope(slotMap:{[name:string]:Schema},name:string,slotInfo:ISlotInfo,ownComponent:IComponent<any>,scope:Scope):Scope{
+    let slotScope = scope.createScope('slot-'+(name||'default'));
+    debugger
+    for(let n in slotMap){
+        let srcReactive = slotInfo.map[n];
+        let schema = slotMap[n];
+        if(!srcReactive) {
+            console.warn(`请求slot上的${n}数据,但该slot并未提供该名称的映射`,ownComponent,slotMap,slotInfo);
+            continue;
+        }
+        if(!schema.$schemaScopedName) {
+            console.warn(`${name}不正确的slot映射,slot-map的值必须是local变量`,ownComponent);
+        }
+        let destReactive = slotScope.reactive(schema.$schemaScopedName,schema,srcReactive.$reactiveValue,true);
+        srcReactive.subscribe((e:IChangeEvent)=>{
+            destReactive.update(e.value);
+        },ownComponent);
+        slotScope[schema.$schemaScopedName] = destReactive;
+    }
+    return slotScope;
 }
 
 function createSchemaProxy(schema, defaultValue?) {
@@ -1303,10 +1469,11 @@ export function local<T>(localSchema?:Schema,name?:string):T {
         context['$-localvar-no'] = (++localVarNo) as any;
     }
     localSchema.$schemaScopedName = localVarName;
-    context[localVarName] = localSchema;
+    let proxy = createSchemaProxy(localSchema);
+    context[localVarName] = proxy;
     
     templateStack.push(context);
-    return localSchema as any;
+    return proxy as any;
 }
 
 export function localFor<T>(schema:Schema,name?:string):T {
@@ -1315,6 +1482,10 @@ export function localFor<T>(schema:Schema,name?:string):T {
 function bindComponentStates(component: IComponent<any>, attrs: { [name: string]:any },scope:Scope){
     let innerStates = component.$states;
     for (let attrName in attrs)(function(attrName:string, bindValue, innerStates:Reactive) {
+        if(attrName=="slot-map"){
+            component.$slotMap = bindValue;
+            return;
+        }
         if ( bindValue && bindValue["$-schema-proxy-raw"] ) 
             bindValue = bindValue["$-schema-proxy-raw"];
         let prop = innerStates[attrName] as Reactive;
@@ -1327,6 +1498,10 @@ function bindComponentStates(component: IComponent<any>, attrs: { [name: string]
         
         if (bindValue instanceof Schema){
             let bindValueReactive = bindValue.getValueFromScope(scope,component) as Reactive;
+            if(!bindValueReactive){
+                console.warn(`没有找到相关变量:${bindValue.getNamePaths().join('.')},将忽略该变量`,component);
+                return;
+            }
             let handler = (e:IChangeEvent)=>{
                 let propReactive = (innerStates as any)[attrName];
                 if(propReactive instanceof Reactive){
@@ -1335,9 +1510,12 @@ function bindComponentStates(component: IComponent<any>, attrs: { [name: string]
             };
             //外面的变化后，触发里面的变化
             bindValueReactive.subscribe(handler,component);
+            prop.$reactiveValue = bindValueReactive.$reactiveValue;
         }else prop.$reactiveValue = bindValue;
     })(attrName,attrs[attrName],innerStates);
 }
+
+
 
 let eventNameRegx = /^on/g;
 function createElementNode(descriptor:INodeDescriptor, ownComponent:IComponent<any>, scope:Scope):HTMLElement {
@@ -1423,16 +1601,17 @@ function buildForItem(itemSchema:Schema,item:Reactive,vnode:INodeDescriptor){}
 function createTextNode(bindValue:any,ownComponent:IComponent<any>, scope :Scope):HTMLElement{
     if(!bindValue) return document.createTextNode(bindValue) as any as HTMLElement;
     let reactive :Reactive;
-    if(bindValue.$schemaType!==undefined){
+    if(bindValue["$-schema-proxy-raw"]) bindValue = bindValue["$-schema-proxy-raw"];
+    else if (bindValue.$reactiveType!==undefined) {
+        reactive = bindValue
+    }else if(bindValue.$schemaType!==undefined){
         scope || (scope = ownComponent?.$scope);
         if(!scope) {
             console.warn(`传入了schema,但却没有ownComponent,使用schema的defaultValue作为内容`);
             return document.createTextNode(bindValue.$schemaDefaultValue) as any as HTMLElement;
         }
         reactive = bindValue.getValueFromScope(scope,ownComponent);
-    } else if (bindValue.$reactiveType!==undefined) {
-        reactive = bindValue
-    }
+    } 
     if (reactive) {
         let node = document.createTextNode(reactive.$reactiveValue);
         let handler = (e:IChangeEvent)=>{
@@ -1505,6 +1684,7 @@ export class YA{
 let IYA:any = YA;
 IYA.createNodeDescriptor = createNodeDescriptor;
 IYA.localFor = localFor;
+IYA.local = local;
 IYA.componentTypes = componentTypes;
 IYA.binders = binders;
 IYA.computed = computed;

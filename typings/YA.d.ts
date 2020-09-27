@@ -43,6 +43,7 @@ export declare function array_index(obj: any, item: any, start?: number): number
 export declare function array_contains(obj: any, item: any): boolean;
 export declare function array_add_unique(arr: any[], item: any): boolean;
 export declare function array_remove(arr: any[], item: any): boolean;
+export declare function deepClone(obj: any, _clones?: any[]): any;
 export declare let extend: (...args: any[]) => any;
 export declare function accessable(desc: any, target?: any, name?: any, value?: any): any;
 /**
@@ -101,7 +102,8 @@ export declare enum SchemaTypes {
     value = 0,
     object = 1,
     array = 2,
-    computed = 3
+    constant = 3,
+    computed = 4
 }
 export declare class Schema {
     $schemaName: string;
@@ -157,9 +159,11 @@ export interface IChangeItem {
     reactive: Reactive;
 }
 export declare enum ChangeEventTypes {
-    setted = 0,
-    appended = 1,
-    removed = 2
+    notify = 0,
+    setted = 1,
+    bubbled = 2,
+    appended = 3,
+    removed = 4
 }
 export interface IChangeEvent {
     type: ChangeEventTypes;
@@ -182,8 +186,9 @@ export declare class Reactive extends Subject {
     $reactiveType: SchemaTypes;
     $reactiveScope?: Scope;
     constructor(ownOrValue: any, schema: Schema, name?: string, scope?: Scope);
-    update(value: any, src?: any, changeType?: ChangeEventTypes): Reactive;
+    update(value: any, src?: any, bubble?: boolean): boolean;
     get(): any;
+    notify(evt: any, bubble?: boolean): Reactive;
 }
 export declare class ConstantReactive extends Reactive {
     constructor(value: any, name?: string);
@@ -191,7 +196,7 @@ export declare class ConstantReactive extends Reactive {
     unsubscribe(topic: any, listener?: any): ConstantReactive;
     notify(...args: any[]): ConstantReactive;
     get(): any;
-    update(value: any): ConstantReactive;
+    update(value: any): boolean;
 }
 export declare class Scope {
     '$-scope-root'?: Scope;
@@ -233,12 +238,24 @@ export interface IComponentMeta {
         [name: string]: Schema;
     };
 }
+interface ISlotInfo {
+    placeholder: HTMLElement;
+    map: {
+        [name: string]: Reactive;
+    };
+}
 export interface IComponent<T> extends IDisposable {
     $meta: IComponentMeta;
     $cid: string;
     $tag?: string;
     $scope: Scope;
     $states: Reactive;
+    $slots: {
+        [name: string]: ISlotInfo;
+    };
+    $slotMap: {
+        [name: string]: Schema;
+    };
     $ownComponent?: IComponent<any>;
     $element?: any;
     template: INodeDescriptor | TTemplateFunc;
